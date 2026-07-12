@@ -52,6 +52,10 @@ export const api = {
     request(`/api/advisory/parcel/${parcelId}/live?source=${source}`),
   getAdvisoryHistory: (parcelId) =>
     request(`/api/advisory/parcel/${parcelId}/history`),
+  getDiagnostic: (parcelId, depth = 'quick', forceRefresh = false) =>
+    request(`/api/advisory/parcel/${parcelId}/diagnostic?depth=${depth}${forceRefresh ? '&force_refresh=true' : ''}`),
+  getThumbnail: (parcelId, kind) =>
+    request(`/api/advisory/parcel/${parcelId}/thumbnail/${kind}`),
 
   // --- Market linkage ---------------------------------------------------
   listPrices: (params = {}) => {

@@ -159,6 +159,28 @@ class ParcelCropBaseline(Base):
     refresh_due = Column(DateTime(timezone=True), nullable=True)
 
 
+class ParcelDiagnostic(Base):
+    """
+    One row per parcel: the cached Stage 1 Land Diagnostic ("FarmLab
+    report") from agri-venture-v2's /diagnostic. Crop-independent, unlike
+    ParcelCropBaseline above -- UNIQUE on parcel_id alone, not
+    parcel_id+crop_id, since there is exactly one Land Diagnostic per
+    parcel regardless of which crop is being considered (see db/schema.sql
+    migration note).
+    """
+    __tablename__ = "parcel_diagnostic"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False, unique=True)
+    # Full, unmodified LandDiagnostic response (climate/soil/water/
+    # vegetation/topography/land_use/carbon fact lists, external reference
+    # models, warnings) -- never reshaped server-side.
+    diagnostic = Column(JSONB)
+    depth = Column(Text)  # 'quick' or 'full' -- whichever was actually run
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    refresh_due = Column(DateTime(timezone=True), nullable=True)
+
+
 class SeasonPlanting(Base):
     __tablename__ = "season_planting"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)

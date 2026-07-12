@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Sprout, TrendingUp, Radio, MessageSquare, Phone, Smartphone, Plus, X, CheckCircle2, Signal, Loader2, MapPin, Undo2, RotateCcw, ArrowLeft, Building2, Layers, Send, AlertTriangle, GraduationCap } from 'lucide-react';
+import { Users, Sprout, TrendingUp, Radio, MessageSquare, Phone, Smartphone, Plus, X, CheckCircle2, Signal, Loader2, MapPin, Undo2, RotateCcw, ArrowLeft, Building2, Layers, Send, AlertTriangle, GraduationCap, FlaskConical, Image as ImageIcon } from 'lucide-react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from './api.js';
@@ -447,54 +447,484 @@ function ParcelSuitabilityCard({ parcel }) {
         <span style={{ fontWeight: 600, fontSize: 14 }}>
           {parcel.area_acres ? `${parcel.area_acres.toFixed(2)} acres` : 'Area pending'}
         </span>
-        {status !== 'loading' && (
-          <button type="button" onClick={check}
-            style={{ background: 'none', border: `1px solid ${COLORS.forest}55`, color: COLORS.forest, borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600 }}>
-            {status === 'idle' ? `Check ${BASELINE_CROP} suitability` : status === 'error' ? 'Retry' : `Recheck ${BASELINE_CROP} suitability`}
-          </button>
-        )}
       </div>
 
-      {status === 'idle' && (
-        <p style={{ fontSize: 12, color: COLORS.charcoal + '88', margin: '8px 0 0' }}>Not checked yet.</p>
-      )}
+      {/* Diagnose (crop-independent Stage 1 LandDiagnostic) before analyse
+          (crop suitability, below) -- workflow reads top-to-bottom in that
+          order. Genuinely separate data: this is agri-venture-v2's Stage 1
+          report, cached in its own parcel_diagnostic table (one row per
+          parcel, not per crop). */}
+      <div style={{ marginTop: 10 }}>
+        <FarmLabReport parcel={parcel} />
+      </div>
 
-      {status === 'loading' && (
-        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: COLORS.charcoal + '99' }}>
-          <Loader2 size={14} className="spin" aria-hidden="true" />
-          <span>Running live biophysical analysis ({elapsed}s elapsed) — a GEE cold start can take up to 150s…</span>
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${COLORS.sage}33` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88' }}>
+            Crop suitability
+          </span>
+          {status !== 'loading' && (
+            <button type="button" onClick={check}
+              style={{ background: 'none', border: `1px solid ${COLORS.forest}55`, color: COLORS.forest, borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 600 }}>
+              {status === 'idle' ? `Check ${BASELINE_CROP} suitability` : status === 'error' ? 'Retry' : `Recheck ${BASELINE_CROP} suitability`}
+            </button>
+          )}
         </div>
-      )}
 
-      {status === 'error' && <div style={{ marginTop: 10 }}><ErrorBanner message={error} onRetry={check} /></div>}
+        {status === 'idle' && (
+          <p style={{ fontSize: 12, color: COLORS.charcoal + '88', margin: '8px 0 0' }}>Not checked yet.</p>
+        )}
 
-      {status === 'done' && s && (
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88', marginBottom: 8 }}>
-            {BASELINE_CROP} suitability {result.cached ? '(cached)' : '(freshly computed)'}
+        {status === 'loading' && (
+          <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12, color: COLORS.charcoal + '99' }}>
+            <Loader2 size={14} className="spin" aria-hidden="true" />
+            <span>Running live biophysical analysis ({elapsed}s elapsed) — a GEE cold start can take up to 150s…</span>
           </div>
-          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Classification</div>
-              <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600, color: COLORS.forest }}>{s.overall_classification ?? '—'}</div>
+        )}
+
+        {status === 'error' && <div style={{ marginTop: 10 }}><ErrorBanner message={error} onRetry={check} /></div>}
+
+        {status === 'done' && s && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88', marginBottom: 8 }}>
+              {BASELINE_CROP} suitability {result.cached ? '(cached)' : '(freshly computed)'}
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Score</div>
-              <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600 }}>{s.overall_score ?? '—'}</div>
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Classification</div>
+                <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600, color: COLORS.forest }}>{s.overall_classification ?? '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Score</div>
+                <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600 }}>{s.overall_score ?? '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Binding domain</div>
+                <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600 }}>{s.binding_domain ?? '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Computed</div>
+                <div style={{ fontSize: 13, marginTop: 3 }}>{result.baseline_computed_at ? new Date(result.baseline_computed_at).toLocaleDateString() : '—'}</div>
+              </div>
             </div>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Binding domain</div>
-              <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600 }}>{s.binding_domain ?? '—'}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>Computed</div>
-              <div style={{ fontSize: 13, marginTop: 3 }}>{result.baseline_computed_at ? new Date(result.baseline_computed_at).toLocaleDateString() : '—'}</div>
-            </div>
+            <SuitabilityExplainability raw={result.baseline_suitability_raw} />
           </div>
-          <SuitabilityExplainability raw={result.baseline_suitability_raw} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+const NATURE_STYLE = {
+  measured: { label: 'MEASURED', color: '#1f4d2c' },
+  derived: { label: 'DERIVED', color: '#2171b5' },
+  modelled: { label: 'MODELLED', color: '#c17f2a' },
+};
+
+function NatureBadge({ nature }) {
+  const n = NATURE_STYLE[nature] || { label: (nature || '?').toUpperCase(), color: COLORS.charcoal };
+  return (
+    <span title="How solid this number is — measured (real observation), derived (arithmetic on observations), or modelled (rests on assumptions)"
+      style={{
+        display: 'inline-block', fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+        color: n.color, border: `1px solid ${n.color}66`, background: n.color + '14',
+        padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap',
+      }}>
+      {n.label}
+    </span>
+  );
+}
+
+// One DiagnosticFact: value/unit/status/nature front-and-center (the
+// nature tag is the whole honesty point of this schema, per
+// PROJECT_STATE.md -- never buried), plain-language description always
+// visible, provenance (dataset/resolution/confidence/notes/series)
+// behind a per-fact disclosure, same pattern as SuitabilityExplainability
+// above.
+function DiagnosticFactRow({ fact }) {
+  return (
+    <div style={{ padding: '10px 0', borderTop: `1px solid ${COLORS.sage}22` }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{fact.title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 13 }}>
+            {fact.value ?? '—'}{fact.unit ? ` ${fact.unit}` : ''}
+          </span>
+          {fact.status && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.forest, textTransform: 'uppercase' }}>
+              {fact.status}
+            </span>
+          )}
+          <NatureBadge nature={fact.nature} />
+        </div>
+      </div>
+      <p style={{ fontSize: 12, color: COLORS.charcoal + 'aa', margin: '4px 0 0' }}>{fact.description}</p>
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 11, color: COLORS.charcoal + '88' }}>Provenance</summary>
+        <div style={{ fontSize: 11, color: COLORS.charcoal + '99', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>Dataset: {fact.dataset}{fact.resolution ? ` (${fact.resolution})` : ''}</span>
+          {fact.period && <span>Period: {fact.period}</span>}
+          <span>Confidence: {fact.confidence}</span>
+          {fact.status_basis && <span>Basis: {fact.status_basis}</span>}
+          {fact.notes && <span>Notes: {fact.notes}</span>}
+          {Array.isArray(fact.series) && (
+            <span>
+              Series{fact.series_labels ? ` (${fact.series_labels.join(', ')})` : ''}: {fact.series.map(v => v ?? '—').join(', ')}
+            </span>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function DiagnosticCategory({ title, facts }) {
+  if (!facts || facts.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88' }}>
+        {title}
+      </div>
+      {facts.map((f, i) => <DiagnosticFactRow key={f.code || i} fact={f} />)}
+    </div>
+  );
+}
+
+// Land-use's own thumbnail is rendered separately, up front alongside its
+// DiagnosticCategory + pie chart (see FarmLabReport) -- not in this list.
+const LAND_USE_THUMBNAIL = { kind: 'landuse', label: 'Land-use map' };
+const THUMBNAIL_KINDS = [
+  { kind: 'ndvi', label: 'NDVI (vegetation) map' },
+  { kind: 'rainfall', label: 'Rainfall context map' },
+];
+
+// Deliberately separate, opt-in per thumbnail -- never fetched
+// automatically alongside the diagnostic. Each click spends real EECU on
+// agri-venture-v2's side (its own thumbnails.py docstring), and nothing
+// here is cached/persisted server-side: every load is a fresh signed URL.
+// Legend/scale/citation render straight from what agri-venture-v2's
+// /thumbnail/* endpoints actually return (providers/thumbnails.py) --
+// never a hardcoded guess of its palette, which could drift out of sync
+// with the real rendering code. Per the Explainability Requirement, a
+// colored map with no key is meaningless to a non-technical field
+// officer, so these render whenever the source provides them.
+function MapLegend({ legend }) {
+  if (!Array.isArray(legend) || legend.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 14px', marginTop: 8 }}>
+      {legend.map(l => (
+        <div key={l.code} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: l.color, display: 'inline-block', border: '1px solid #00000022', flexShrink: 0 }} aria-hidden="true" />
+          <span>{l.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function formatBandRange(b) {
+  if (b.min == null) return `< ${b.max}`;
+  if (b.max == null) return `≥ ${b.min}`;
+  return `${b.min}–${b.max}`;
+}
+
+function MapScale({ scale }) {
+  if (!scale) return null;
+  const gradient = `linear-gradient(to right, ${scale.palette.join(', ')})`;
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div style={{ height: 12, borderRadius: 6, background: gradient, border: '1px solid #00000022' }} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: COLORS.charcoal + '88', marginTop: 2 }}>
+        <span>{scale.min}{scale.unit ? ` ${scale.unit}` : ''}</span>
+        <span>{scale.max}{scale.unit ? ` ${scale.unit}` : ''}</span>
+      </div>
+      {Array.isArray(scale.bands) && scale.bands.length > 0 && (
+        <div style={{ display: 'flex', gap: 14, marginTop: 4, fontSize: 11, flexWrap: 'wrap' }}>
+          {scale.bands.map((b, i) => (
+            <span key={i}><strong>{b.label}</strong>: {formatBandRange(b)}</span>
+          ))}
         </div>
       )}
     </div>
+  );
+}
+
+// Citation styled as a clear, always-visible line (not fine print) --
+// the task's own complaint was that a legend/citation buried or missing
+// tells a field officer nothing.
+function MapCitation({ dataset, resolution, period }) {
+  if (!dataset) return null;
+  return (
+    <div style={{ fontSize: 11, color: COLORS.charcoal + 'aa', marginTop: 8, borderTop: `1px solid ${COLORS.sage}22`, paddingTop: 6 }}>
+      <strong>Source:</strong> {dataset}{resolution ? ` · ${resolution}` : ''}{period ? ` · ${period}` : ''}
+    </div>
+  );
+}
+
+function ThumbnailLoader({ parcelId, kind, label }) {
+  const [status, setStatus] = useState('idle'); // idle | loading | done | error
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  function load() {
+    setStatus('loading');
+    setError(null);
+    api.getThumbnail(parcelId, kind)
+      .then(res => { setResult(res); setStatus('done'); })
+      .catch(e => { setError(e.message); setStatus('error'); });
+  }
+
+  return (
+    <div style={{ border: `1px solid ${COLORS.sage}33`, borderRadius: 8, padding: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+        {status !== 'loading' && (
+          <button type="button" onClick={load}
+            style={{ background: 'none', border: `1px solid ${COLORS.forest}55`, color: COLORS.forest, borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 600 }}>
+            {status === 'idle' ? 'Load map' : status === 'error' ? 'Retry' : 'Reload'}
+          </button>
+        )}
+      </div>
+      {status === 'loading' && (
+        <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: COLORS.charcoal + '99' }}>
+          <Loader2 size={12} className="spin" aria-hidden="true" />
+          <span>Generating from live satellite data — spends real compute, please wait…</span>
+        </div>
+      )}
+      {status === 'error' && <div style={{ marginTop: 8 }}><ErrorBanner message={error} onRetry={load} /></div>}
+      {status === 'done' && result && (
+        <div style={{ marginTop: 8 }}>
+          <img src={result.url} alt={label} style={{ maxWidth: '100%', borderRadius: 6, display: 'block' }} />
+          <MapLegend legend={result.legend} />
+          <MapScale scale={result.scale} />
+          <MapCitation
+            dataset={result.dataset}
+            resolution={result.resolution}
+            period={result.period || result.generated_period}
+          />
+          {result.buffer_km && (
+            <div style={{ fontSize: 10, color: COLORS.charcoal + '88', marginTop: 4 }}>
+              Zoomed out to a {result.buffer_km}km regional buffer (parcel too small for CHIRPS's own pixel size) — farm boundary outlined in white.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The colors the land-use MAP IMAGE actually renders -- NOT the naive
+// WorldCover per-class palette (WORLDCOVER_VIS in agri-venture-v2's
+// thumbnails.py). Those two differ for every class except Tree cover:
+// getThumbURL()'s {min:10, max:100, palette} treats the 11 class codes as
+// a CONTINUOUS linear ramp across [10,100], not a discrete per-class
+// lookup, so most classes render as a color BLEND between two palette
+// stops. Confirmed by pixel-sampling two real rendered thumbnails and
+// reverse-computing the ramp math (see agri-venture-v2's
+// _interpolated_worldcover_color(), which /thumbnail/landuse's own
+// "legend" field now uses and which produced these exact values) --
+// e.g. Built-up is really rgb(219,80,80), not the "pure" fa0000 red the
+// raw palette list implies.
+//
+// Hardcoded here (not fetched) because this chart renders from the
+// already-loaded /diagnostic response alone (free) and must not force a
+// caller to spend the separate, opt-in GEE thumbnail call just to learn
+// the colors. FRAGILE: if agri-venture-v2 ever changes WORLDCOVER_VIS's
+// min/max/palette, these values silently go stale again -- there is no
+// way to keep them in sync automatically without either (a) always
+// paying for the thumbnail call first, or (b) agri-venture-v2 exposing
+// this palette on a lighter endpoint. Re-derive from
+// _interpolated_worldcover_color() in thumbnails.py if that ever happens.
+const WORLDCOVER_COLORS = {
+  'Tree cover': '#006400', 'Shrubland': '#ffc327', 'Grassland': '#fce874',
+  'Cropland': '#f364aa', 'Built-up': '#db5050', 'Bare / sparse vegetation': '#d5d5d5',
+  'Snow and ice': '#5093d5', 'Permanent water': '#008ba9', 'Herbaceous wetland': '#00c97a',
+  'Mangroves': '#6fd988', 'Moss and lichen': '#fae6a0',
+};
+
+function polarToXY(cx, cy, r, angleDeg) {
+  const rad = (angleDeg - 90) * (Math.PI / 180);
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+// Donut chart straight from the land_cover DiagnosticFact's own series/
+// series_labels (already the real, area-weighted percentages computed by
+// agri-venture-v2's GEE reduceRegion -- see get_diagnostic() investigation).
+// Deliberately uses the REAL WorldCover colors (not the dataviz skill's
+// validated CVD-safe categorical palette) so a slice's color always matches
+// the same category's color on the land-use map/legend directly above it --
+// a documented trade-off: the validator flags Tree cover vs Built-up (this
+// parcel's two largest categories) as CVD-indistinguishable (protanopia
+// ΔE 2.1, far below the ≥12 target). Mitigated by never relying on color
+// alone anywhere here: every slice's identity also comes from the legend's
+// text label and from the center callout, never from color-matching alone.
+function LandUsePieChart({ fact }) {
+  if (!fact || !Array.isArray(fact.series) || fact.series.length === 0) return null;
+
+  const total = fact.series.reduce((a, b) => a + b, 0) || 100;
+  const R = 70, CX = 90, CY = 90, STROKE_GAP = 2;
+  let cursor = 0;
+  const slices = fact.series.map((pct, i) => {
+    const label = fact.series_labels?.[i] ?? `Class ${i}`;
+    const startAngle = (cursor / total) * 360;
+    cursor += pct;
+    const endAngle = (cursor / total) * 360;
+    const color = WORLDCOVER_COLORS[label] || COLORS.charcoal + '55';
+    return { label, pct, color, startAngle, endAngle };
+  });
+
+  return (
+    <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 16px' }}>
+      <div style={{ position: 'relative', width: 180, height: 180, flexShrink: 0 }}>
+        <svg viewBox="0 0 180 180" width={180} height={180} role="img" aria-label={`Land cover breakdown: dominant class ${slices[0].label} at ${slices[0].pct}%`}>
+          {slices.map((s, i) => {
+            // Full-circle case (single class = 100%) can't be drawn as an arc path.
+            if (s.endAngle - s.startAngle >= 359.99) {
+              return <circle key={i} cx={CX} cy={CY} r={R} fill={s.color} stroke={COLORS.sand} strokeWidth={STROKE_GAP} />;
+            }
+            const [x1, y1] = polarToXY(CX, CY, R, s.startAngle);
+            const [x2, y2] = polarToXY(CX, CY, R, s.endAngle);
+            const largeArc = s.endAngle - s.startAngle > 180 ? 1 : 0;
+            const d = `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+            return <path key={i} d={d} fill={s.color} stroke={COLORS.sand} strokeWidth={STROKE_GAP} />;
+          })}
+          {/* Donut hole, doubling as the direct-labeled callout for the one
+              category that's actually the story here: the dominant class. */}
+          <circle cx={CX} cy={CY} r={38} fill={COLORS.sand} />
+        </svg>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Newsreader, serif', color: COLORS.charcoal }}>{slices[0].pct}%</div>
+          <div style={{ fontSize: 10, color: COLORS.charcoal + '99', maxWidth: 70, lineHeight: 1.2 }}>{slices[0].label}</div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {slices.map((s, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12 }}>
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: s.color, border: '1px solid #00000022', flexShrink: 0 }} aria-hidden="true" />
+              <span style={{ flex: 1 }}>{s.label}</span>
+              <span style={{ fontFamily: 'monospace', color: COLORS.charcoal + 'aa' }}>{s.pct}%</span>
+            </div>
+          ))}
+        </div>
+        <MapCitation dataset={fact.dataset} resolution={fact.resolution} period={fact.period} />
+      </div>
+    </div>
+  );
+}
+
+// 'land_use' deliberately excluded -- rendered as its own combined block
+// (facts + map + legend + pie chart) ahead of Climate; see FarmLabReport.
+const DIAGNOSTIC_CATEGORIES = [
+  ['climate', 'Climate'], ['soil', 'Soil'], ['water', 'Water'],
+  ['vegetation', 'Vegetation'], ['topography', 'Topography'],
+  ['carbon', 'Carbon'],
+];
+
+function FarmLabReport({ parcel }) {
+  const [status, setStatus] = useState('idle'); // idle | loading | done | error
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  function load() {
+    setStatus('loading');
+    setError(null);
+    startRef.current = Date.now();
+    const tick = setInterval(() => setElapsed(Math.round((Date.now() - startRef.current) / 1000)), 1000);
+    api.getDiagnostic(parcel.id, 'quick')
+      .then(res => { setResult(res); setStatus('done'); })
+      .catch(e => { setError(e.message); setStatus('error'); })
+      .finally(() => clearInterval(tick));
+  }
+
+  const diag = result?.diagnostic;
+
+  return (
+    <details>
+      <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: COLORS.forest, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <FlaskConical size={14} aria-hidden="true" /> Farm Lab Report
+      </summary>
+
+      <div style={{ marginTop: 10 }}>
+        {status === 'idle' && (
+          <button type="button" onClick={load}
+            style={{ background: 'none', border: `1px solid ${COLORS.forest}55`, color: COLORS.forest, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600 }}>
+            Load Farm Lab Report
+          </button>
+        )}
+
+        {status === 'loading' && (
+          <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: COLORS.charcoal + '99' }}>
+            <Loader2 size={14} className="spin" aria-hidden="true" />
+            <span>Building land diagnostic ({elapsed}s elapsed) — quick depth, usually ~30s…</span>
+          </div>
+        )}
+
+        {status === 'error' && <ErrorBanner message={error} onRetry={load} />}
+
+        {status === 'done' && diag && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88' }}>
+                {result.cached ? 'Cached' : 'Freshly computed'} · depth={result.depth}
+              </span>
+              <span style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>
+                {result.computed_at ? new Date(result.computed_at).toLocaleDateString() : '—'}
+              </span>
+            </div>
+
+            {Array.isArray(diag.warnings) && diag.warnings.length > 0 && (
+              <div style={{ background: '#fdecea', border: '1px solid #a8562f33', borderRadius: 8, padding: 10, fontSize: 12, marginBottom: 12 }}>
+                {diag.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+              </div>
+            )}
+
+            {/* Land use surfaced first, ahead of Climate, per explicit
+                ordering request -- facts, map, legend, and pie chart kept
+                together as one block. Every other category below keeps its
+                prior relative order unchanged. */}
+            <DiagnosticCategory title="Land use" facts={diag.land_use} />
+            {/* Collapsible as a display-only toggle -- <details> hides its
+                content with CSS, it doesn't unmount it, so the already-loaded
+                map/legend/pie-chart state survives a collapse/re-expand with
+                no re-fetch. Defaults open so first load looks unchanged. */}
+            <details open style={{ marginBottom: 12 }}>
+              <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: COLORS.forest, marginBottom: 8 }}>
+                Land-use map &amp; breakdown
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <ThumbnailLoader parcelId={parcel.id} kind={LAND_USE_THUMBNAIL.kind} label={LAND_USE_THUMBNAIL.label} />
+                <LandUsePieChart fact={diag.land_use?.[0]} />
+              </div>
+            </details>
+
+            {DIAGNOSTIC_CATEGORIES.map(([key, label]) => (
+              <DiagnosticCategory key={key} title={label} facts={diag[key]} />
+            ))}
+
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ImageIcon size={13} aria-hidden="true" /> Map thumbnails
+              </div>
+              <p style={{ fontSize: 11, color: COLORS.charcoal + '88', marginTop: 0, marginBottom: 8 }}>
+                Not loaded automatically — each spends real satellite compute on demand.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {THUMBNAIL_KINDS.map(({ kind, label }) => (
+                  <ThumbnailLoader key={kind} parcelId={parcel.id} kind={kind} label={label} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 

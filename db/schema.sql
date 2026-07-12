@@ -308,3 +308,30 @@ ALTER TABLE parcel
 -- ---------------------------------------------------------------------
 ALTER TABLE crop_dictionary_entry
     ADD COLUMN agriventure_crop_key TEXT;
+
+-- ---------------------------------------------------------------------
+-- Migration: parcel_diagnostic — caches agri-venture-v2's Stage 1
+-- LandDiagnostic ("FarmLab report") per parcel.
+--
+-- Deliberately a SEPARATE table from parcel_crop_baseline above, not a
+-- reuse of it: parcel_crop_baseline is a per-(parcel, crop) suitability
+-- verdict (UNIQUE on parcel_id+crop_id, one row per crop a farmer might
+-- grow on that land). The Land Diagnostic is a different shape entirely
+-- — a crop-independent "lab report" of the parcel itself (climate, soil,
+-- water, vegetation, topography, land use, carbon), computed once per
+-- parcel regardless of which crop is being considered. UNIQUE on
+-- parcel_id alone (not parcel_id+crop_id) reflects that: there is
+-- exactly one Land Diagnostic per parcel, never one per crop.
+--
+-- Same tiered slow-data caching pattern as parcel_crop_baseline
+-- (computed_at/refresh_due, checked before recomputing) — see
+-- get_diagnostic() in app/routers/advisory.py.
+-- ---------------------------------------------------------------------
+CREATE TABLE parcel_diagnostic (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    parcel_id    UUID NOT NULL REFERENCES parcel(id) UNIQUE,
+    diagnostic   JSONB,       -- full LandDiagnostic response, unmodified
+    depth        TEXT,        -- 'quick' or 'full' — whichever was actually run
+    computed_at  TIMESTAMPTZ,
+    refresh_due  TIMESTAMPTZ
+);

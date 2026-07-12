@@ -51,6 +51,9 @@ from app import models
 router = APIRouter()
 
 BASELINE_REFRESH_INTERVAL_DAYS = 365  # slow-changing data: recheck yearly
+DIAGNOSTIC_REFRESH_INTERVAL_DAYS = 365  # same tiered slow-data cadence as baseline
+
+_THUMBNAIL_KINDS = {"ndvi", "landuse", "rainfall"}
 
 # Base URL for agri-venture-v2's independently-deployed FastAPI service.
 # Same env-var-with-localhost-default pattern as DATABASE_URL in
@@ -151,6 +154,79 @@ class BiophysicalEngine:
             "confidence": raw.get("confidence"),
         }
         return {"suitability": summary, "suitability_raw": raw}
+
+    def diagnose(self, parcel, depth: str = "quick") -> dict:
+        """
+        POSTs {geojson, depth} to agri-venture-v2's Stage 1 /diagnostic --
+        the crop-independent "lab report" (climate/soil/water/vegetation/
+        topography/land_use/carbon DiagnosticFact lists), never a
+        suitability verdict. Sibling to analyse() above: same engine, same
+        HTTP-not-import boundary, same fail-loudly discipline (503
+        unreachable, 502 error response) -- no fake fallback data either
+        way.
+
+        Unlike analyse(), this takes no `crop` -- Stage 1 describes the
+        parcel itself, independent of what might be grown on it.
+        """
+        geojson = json.loads(json.dumps(to_shape(parcel.geom).__geo_interface__))
+        try:
+            resp = requests.post(
+                f"{AGRIVENTURE_API_URL}/diagnostic",
+                json={"geojson": geojson, "depth": depth},
+                timeout=AGRIVENTURE_TIMEOUT_S,
+            )
+        except requests.RequestException as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"agri-venture-v2 unreachable at {AGRIVENTURE_API_URL}/diagnostic: {e}",
+            )
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"agri-venture-v2 /diagnostic returned {resp.status_code} "
+                    f"for depth='{depth}': {resp.text[:500]}"
+                ),
+            )
+
+        return resp.json()
+
+    def thumbnail(self, parcel, kind: str) -> dict:
+        """
+        Proxies to agri-venture-v2's lazy /thumbnail/{kind} endpoints
+        (ndvi | landuse | rainfall). Deliberately NOT called from
+        diagnose() or anywhere in the /diagnostic caching path above --
+        each call spends real EECU on agri-venture-v2's side, so it stays
+        opt-in, triggered only when a caller explicitly asks for a
+        thumbnail (see get_thumbnail() below). Returns agri-venture-v2's
+        response completely unmodified and un-persisted -- no DB write
+        anywhere in this method -- matching its own signed-URL,
+        not-server-side-stored design (thumbnails.py docstring).
+        """
+        geojson = json.loads(json.dumps(to_shape(parcel.geom).__geo_interface__))
+        try:
+            resp = requests.post(
+                f"{AGRIVENTURE_API_URL}/thumbnail/{kind}",
+                json={"geojson": geojson},
+                timeout=AGRIVENTURE_TIMEOUT_S,
+            )
+        except requests.RequestException as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"agri-venture-v2 unreachable at {AGRIVENTURE_API_URL}/thumbnail/{kind}: {e}",
+            )
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"agri-venture-v2 /thumbnail/{kind} returned {resp.status_code}: "
+                    f"{resp.text[:500]}"
+                ),
+            )
+
+        return resp.json()
 
 
 class SatyuktSat2FarmEngine:
@@ -322,6 +398,124 @@ def get_baseline(parcel_id: str, crop: str, force_refresh: bool = False, db: Ses
         "baseline_computed_at": baseline.computed_at,
         "next_refresh_due": baseline.refresh_due,
     }
+
+
+@router.get("/parcel/{parcel_id}/diagnostic")
+def get_diagnostic(parcel_id: str, depth: str = "quick", force_refresh: bool = False, db: Session = Depends(get_db)):
+    """
+    Returns the cached Stage 1 Land Diagnostic ("FarmLab report") unless
+    it's stale, force_refresh is set, or a deeper depth is being asked
+    for than what's cached. Reads/writes parcel_diagnostic, keyed by
+    parcel_id alone -- crop-independent, unlike /baseline above (see
+    db/schema.sql migration note on why this is a separate table, not a
+    reuse of parcel_crop_baseline).
+
+    `depth`: "quick" (~30s, no Sentinel-2) or "full" (~3min, adds
+    vegetation/water/carbon). If a cached "quick" diagnostic exists and
+    "full" is requested, that's treated as needing recompute too --
+    "quick" is a strict subset of "full" (see build_diagnostic() in
+    agri-venture-v2), so a cached quick result can never satisfy a full
+    request. The reverse isn't true: a cached "full" result already
+    contains everything "quick" would ask for, so requesting "quick"
+    against a cached "full" diagnostic just serves it as-is.
+    """
+    parcel = db.query(models.Parcel).filter_by(id=parcel_id).first()
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+
+    if depth not in ("quick", "full"):
+        raise HTTPException(status_code=400, detail=f"depth must be 'quick' or 'full', got '{depth}'")
+
+    diagnostic_row = (
+        db.query(models.ParcelDiagnostic)
+        .filter_by(parcel_id=parcel_id)
+        .first()
+    )
+
+    now = datetime.now(timezone.utc)
+    needs_deeper_depth = (
+        depth == "full"
+        and diagnostic_row is not None
+        and diagnostic_row.depth != "full"
+    )
+    is_stale = (
+        diagnostic_row is None
+        or diagnostic_row.computed_at is None
+        or diagnostic_row.refresh_due is None
+        or diagnostic_row.refresh_due < now
+        or needs_deeper_depth
+    )
+
+    if is_stale or force_refresh:
+        # Same atomic-upsert discipline as /baseline above -- diagnose()
+        # is a live external call (up to AGRIVENTURE_TIMEOUT_S) with the
+        # same concurrent-request race window a SELECT-then-INSERT would
+        # open up, so this goes straight to INSERT ... ON CONFLICT DO
+        # UPDATE rather than re-introducing that gap.
+        diagnostic_payload = biophysical_engine.diagnose(parcel, depth=depth)
+        refresh_due = now + timedelta(days=DIAGNOSTIC_REFRESH_INTERVAL_DAYS)
+        stmt = pg_insert(models.ParcelDiagnostic).values(
+            parcel_id=parcel_id,
+            diagnostic=diagnostic_payload,
+            depth=depth,
+            computed_at=now,
+            refresh_due=refresh_due,
+        ).on_conflict_do_update(
+            index_elements=["parcel_id"],
+            set_={
+                "diagnostic": diagnostic_payload,
+                "depth": depth,
+                "computed_at": now,
+                "refresh_due": refresh_due,
+            },
+        )
+        db.execute(stmt)
+        db.commit()
+        diagnostic_row = (
+            db.query(models.ParcelDiagnostic)
+            .filter_by(parcel_id=parcel_id)
+            .first()
+        )
+        was_cached = False
+    else:
+        was_cached = True
+
+    return {
+        "parcel_id": parcel_id,
+        "cached": was_cached,
+        "depth": diagnostic_row.depth,
+        "diagnostic": diagnostic_row.diagnostic,
+        "computed_at": diagnostic_row.computed_at,
+        "next_refresh_due": diagnostic_row.refresh_due,
+    }
+
+
+@router.get("/parcel/{parcel_id}/thumbnail/{kind}")
+def get_thumbnail(parcel_id: str, kind: str, db: Session = Depends(get_db)):
+    """
+    Proxies to agri-venture-v2's lazy /thumbnail/{kind} (ndvi | landuse |
+    rainfall), forwarding the parcel's already-stored geometry so the
+    frontend never has to resend it. Deliberately NOT wired into
+    get_diagnostic() above -- this is called only when a user explicitly
+    clicks to load a thumbnail (real EECU cost per call, per
+    agri-venture-v2's own thumbnails.py docstring).
+
+    Exists as a CORWADO-side proxy rather than the frontend calling
+    agri-venture-v2 directly: agri-venture-v2's CORS allow-list
+    (server.py) is hardcoded to localhost:5173/3000, which the frontend's
+    actual dev port doesn't reliably match. Nothing here is persisted --
+    agri-venture-v2's response (a short-lived signed GEE URL + bounds)
+    is returned exactly as received, same not-server-side-stored design
+    as the source system.
+    """
+    if kind not in _THUMBNAIL_KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {sorted(_THUMBNAIL_KINDS)}, got '{kind}'")
+
+    parcel = db.query(models.Parcel).filter_by(id=parcel_id).first()
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+
+    return biophysical_engine.thumbnail(parcel, kind)
 
 
 _LIVE_ALLOWED_SOURCES = {"satyukt_sat2farm", "satyukt_sat4risk", "satyukt_sat4agri"}
