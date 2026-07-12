@@ -42,6 +42,10 @@ class StewardIn(BaseModel):
 class StewardOut(StewardIn):
     created_at: datetime
     synced_at: Optional[datetime] = None
+    # Resolved from the cooperative_id FK via LandSteward.cooperative_name
+    # (app/models.py) -- the farmer detail view needs a human-readable
+    # name, not the raw UUID cooperative_id already exposed above.
+    cooperative_name: Optional[str] = None
 
     class Config:
         from_attributes = True

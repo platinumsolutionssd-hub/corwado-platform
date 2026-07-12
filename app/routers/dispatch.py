@@ -13,6 +13,7 @@ Three kinds of endpoint:
    month" is exactly the kind of number a Norad report would want).
 """
 from collections import Counter
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,6 +36,12 @@ class DispatchOut(BaseModel):
     content_ref_id: Optional[str] = None
     content_format: str = "text"
     delivery_status: str
+    # Was missing from this schema even though message_dispatch.sent_at
+    # (app/models.py) has always existed -- response_model=DispatchOut
+    # silently dropped it from every /log response. Found while verifying
+    # /log's real shape against the running backend for the farmer detail
+    # view, which needs sent_at for the chronological history list.
+    sent_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

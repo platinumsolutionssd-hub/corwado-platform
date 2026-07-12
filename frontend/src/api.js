@@ -46,8 +46,8 @@ export const api = {
     }),
 
   // --- Advisory -----------------------------------------------------------
-  getBaseline: (parcelId, forceRefresh = false) =>
-    request(`/api/advisory/parcel/${parcelId}/baseline${forceRefresh ? '?force_refresh=true' : ''}`),
+  getBaseline: (parcelId, crop, forceRefresh = false) =>
+    request(`/api/advisory/parcel/${parcelId}/baseline?crop=${encodeURIComponent(crop)}${forceRefresh ? '&force_refresh=true' : ''}`),
   getLiveAdvisory: (parcelId, source = 'satyukt_sat2farm') =>
     request(`/api/advisory/parcel/${parcelId}/live?source=${source}`),
   getAdvisoryHistory: (parcelId) =>

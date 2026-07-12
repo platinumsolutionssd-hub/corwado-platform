@@ -286,3 +286,25 @@ ALTER TABLE parcel
     DROP COLUMN baseline_suitability,
     DROP COLUMN baseline_computed_at,
     DROP COLUMN baseline_refresh_due;
+
+-- ---------------------------------------------------------------------
+-- Migration, added Day 15 (post real-DB verification): crop_dictionary_
+-- entry was serving two distinct jobs without distinguishing them --
+-- (1) CORWADO tracking that a crop exists at all, for registration and
+-- market-linkage purposes (true for all 6 seeded crops), and (2)
+-- agri-venture-v2 actually being able to produce a biophysical
+-- suitability score for it (true only for maize and moringa today --
+-- the other 4 crops don't have a biology.json in agri-venture-v2 yet).
+-- Querying /baseline for a crop that satisfies (1) but not (2) reached
+-- agri-venture-v2 and failed with an opaque 502 instead of a clean,
+-- specific error.
+--
+-- agriventure_crop_key is nullable: NULL means "CORWADO tracks this
+-- crop, but no biophysical scoring source exists yet" -- get_baseline()
+-- in app/routers/advisory.py checks this before ever calling
+-- BiophysicalEngine. Added as an explicit ALTER rather than rewritten
+-- into crop_dictionary_entry's original CREATE TABLE, consistent with
+-- every other migration in this file.
+-- ---------------------------------------------------------------------
+ALTER TABLE crop_dictionary_entry
+    ADD COLUMN agriventure_crop_key TEXT;

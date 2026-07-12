@@ -85,6 +85,10 @@ class LandSteward(Base):
     cooperative = relationship("Cooperative", back_populates="stewards")
     parcels = relationship("Parcel", back_populates="steward")
 
+    @property
+    def cooperative_name(self):
+        return self.cooperative.name if self.cooperative else None
+
 
 class Parcel(Base):
     __tablename__ = "parcel"
@@ -123,6 +127,12 @@ class CropDictionaryEntry(Base):
     scoring_params = Column(JSONB, nullable=False)
     typical_season = Column(Text)
     notes = Column(Text)
+    # Nullable: NULL means CORWADO tracks this crop for registration/
+    # market-linkage purposes but agri-venture-v2 has no biology.json for
+    # it yet, so no biophysical score can be produced (see db/schema.sql
+    # migration, Day 15). get_baseline() in app/routers/advisory.py
+    # checks this before ever calling BiophysicalEngine.
+    agriventure_crop_key = Column(Text)
 
 
 class ParcelCropBaseline(Base):

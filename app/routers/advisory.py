@@ -41,6 +41,7 @@ from typing import List, Optional
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from geoalchemy2.shape import to_shape
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -228,6 +229,21 @@ def get_baseline(parcel_id: str, crop: str, force_refresh: bool = False, db: Ses
             detail=f"Crop '{crop}' not found in crop_dictionary_entry. Add it before requesting a baseline.",
         )
 
+    # crop_dictionary_entry existing only proves CORWADO tracks this crop
+    # for registration/market-linkage -- it doesn't mean agri-venture-v2
+    # can score it. agriventure_crop_key is NULL until a biology.json
+    # exists on that side (today: only maize and moringa). Gate here so
+    # the caller gets an honest, specific 404 instead of BiophysicalEngine
+    # reaching agri-venture-v2 and coming back with an opaque 502.
+    if crop_entry.agriventure_crop_key is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Crop '{crop}' is registered but has no biophysical scoring "
+                "source configured yet."
+            ),
+        )
+
     baseline = (
         db.query(models.ParcelCropBaseline)
         .filter_by(parcel_id=parcel_id, crop_id=crop_entry.id)
@@ -249,16 +265,48 @@ def get_baseline(parcel_id: str, crop: str, force_refresh: bool = False, db: Ses
     )
 
     if is_stale or force_refresh:
+        # analyse() is a live external HTTP call that can legitimately take
+        # up to AGRIVENTURE_TIMEOUT_S (150s) on a GEE cold start. The old
+        # code did SELECT (above) -> await analyse() -> "if baseline is
+        # None: INSERT else UPDATE" in Python. That gap between the SELECT
+        # and the write is exactly the window where a second concurrent
+        # request for the *same* (parcel_id, crop_id) -- e.g. React
+        # StrictMode double-invoking ParcelBaselineStep's effect without
+        # aborting the first fetch (frontend/src/main.jsx, App.jsx) -- also
+        # sees `baseline is None`, also calls analyse(), and also tries to
+        # INSERT once both come back. First INSERT commits fine; second
+        # hits parcel_crop_baseline_parcel_id_crop_id_key and raises
+        # IntegrityError -> unhandled 500. The UNIQUE constraint was doing
+        # its job; the Python-side check-then-act just wasn't atomic
+        # across that long a call. An atomic INSERT ... ON CONFLICT DO
+        # UPDATE closes the gap: whichever request's write reaches
+        # Postgres first inserts, the other updates that same row -- no
+        # race window, no swallowed exception.
         mapped = biophysical_engine.analyse(parcel, crop)
-        if baseline is None:
-            baseline = models.ParcelCropBaseline(parcel_id=parcel_id, crop_id=crop_entry.id)
-            db.add(baseline)
-        baseline.suitability = mapped["suitability"]
-        baseline.suitability_raw = mapped["suitability_raw"]
-        baseline.computed_at = now
-        baseline.refresh_due = now + timedelta(days=BASELINE_REFRESH_INTERVAL_DAYS)
+        refresh_due = now + timedelta(days=BASELINE_REFRESH_INTERVAL_DAYS)
+        stmt = pg_insert(models.ParcelCropBaseline).values(
+            parcel_id=parcel_id,
+            crop_id=crop_entry.id,
+            suitability=mapped["suitability"],
+            suitability_raw=mapped["suitability_raw"],
+            computed_at=now,
+            refresh_due=refresh_due,
+        ).on_conflict_do_update(
+            index_elements=["parcel_id", "crop_id"],
+            set_={
+                "suitability": mapped["suitability"],
+                "suitability_raw": mapped["suitability_raw"],
+                "computed_at": now,
+                "refresh_due": refresh_due,
+            },
+        )
+        db.execute(stmt)
         db.commit()
-        db.refresh(baseline)
+        baseline = (
+            db.query(models.ParcelCropBaseline)
+            .filter_by(parcel_id=parcel_id, crop_id=crop_entry.id)
+            .first()
+        )
         was_cached = False
     else:
         was_cached = True
