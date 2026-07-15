@@ -15,7 +15,18 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`API error ${res.status} on ${path}: ${body}`);
+    // FastAPI's error shape is {"detail": "..."} -- surface that message
+    // directly (it's already written for a human, e.g. stewards.py's
+    // delete-conflict message) instead of the raw JSON blob, wherever
+    // an error banner in the UI just renders err.message.
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (typeof parsed.detail === 'string') detail = parsed.detail;
+    } catch {
+      // not JSON -- fall back to the raw body as-is
+    }
+    throw new Error(detail);
   }
   // 204 No Content etc.
   const text = await res.text();
@@ -33,6 +44,10 @@ export const api = {
   getSteward: (id) => request(`/api/stewards/${id}`),
   registerSteward: (data) =>
     request('/api/stewards', { method: 'POST', body: JSON.stringify(data) }),
+  updateSteward: (id, data) =>
+    request(`/api/stewards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteSteward: (id) =>
+    request(`/api/stewards/${id}`, { method: 'DELETE' }),
   syncOfflineStewards: (batch) =>
     request('/api/stewards/sync', { method: 'POST', body: JSON.stringify(batch) }),
 
@@ -43,6 +58,15 @@ export const api = {
     request('/api/parcels', {
       method: 'POST',
       body: JSON.stringify({ steward_id: stewardId, geojson }),
+    }),
+  // Telegram BOUNDARY hand-off: same endpoint, single-use token instead
+  // of steward_id -- see app/routers/parcels.py, which resolves (and
+  // atomically consumes) the steward from the token server-side.
+  getDrawToken: (token) => request(`/api/parcels/draw-token/${encodeURIComponent(token)}`),
+  registerParcelWithToken: (token, geojson) =>
+    request('/api/parcels', {
+      method: 'POST',
+      body: JSON.stringify({ token, geojson }),
     }),
 
   // --- Advisory -----------------------------------------------------------
@@ -69,6 +93,41 @@ export const api = {
   confirmMatch: (postingId, aggregationEventId) =>
     request(`/api/market/postings/${postingId}/confirm-match?aggregation_event_id=${aggregationEventId}`, {
       method: 'POST',
+    }),
+
+  // --- Seasons (season_planting) ------------------------------------------
+  // parcelId omitted -> every season across every parcel (used by the
+  // dashboard table to derive a "crops planted" column without an
+  // N+1 fetch per farmer).
+  listSeasons: (parcelId) => request(`/api/seasons${parcelId ? `?parcel_id=${parcelId}` : ''}`),
+  startSeason: (parcelId, crop, sowingDate, seasonLabel) =>
+    request('/api/seasons', {
+      method: 'POST',
+      body: JSON.stringify({ parcel_id: parcelId, crop, sowing_date: sowingDate, season_label: seasonLabel }),
+    }),
+
+  // --- Bill of Quantities + financing ledger -------------------------------
+  listInputRequirements: (seasonPlantingId) =>
+    request(`/api/inputs/requirements?season_planting_id=${seasonPlantingId}`),
+  seedBoqBaseline: (seasonPlantingId) =>
+    request(`/api/inputs/seed-baseline?season_planting_id=${seasonPlantingId}`, { method: 'POST' }),
+  overrideInputRequirement: (requirementId, unitCostUsd, overrideReason, overrideBy) =>
+    request(`/api/inputs/requirements/${requirementId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ unit_cost_usd: unitCostUsd, override_reason: overrideReason, override_by: overrideBy }),
+    }),
+  listFinancingByRequirement: (inputRequirementId) =>
+    request(`/api/inputs/financing?input_requirement_id=${inputRequirementId}`),
+  listFinancingBySeason: (seasonPlantingId) =>
+    request(`/api/inputs/financing?season_planting_id=${seasonPlantingId}`),
+  recordFinancing: (inputRequirementId, financierType, amountUsd, financedAt, financierName, notes) =>
+    request('/api/inputs/financing', {
+      method: 'POST',
+      body: JSON.stringify({
+        input_requirement_id: inputRequirementId, financier_type: financierType,
+        amount_usd: amountUsd, financed_at: financedAt,
+        financier_name: financierName || null, notes: notes || null,
+      }),
     }),
 
   // --- Dispatch -----------------------------------------------------------

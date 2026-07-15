@@ -11,7 +11,7 @@ and .env.example for connection settings.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import stewards, parcels, advisory, market, dispatch
+from app.routers import stewards, parcels, advisory, market, dispatch, seasons, inputs, authorized_operators
 
 app = FastAPI(
     title="CORWADO Agricultural Extension & Market Linkage Platform",
@@ -35,6 +35,9 @@ app.include_router(parcels.router, prefix="/api/parcels", tags=["Parcels"])
 app.include_router(advisory.router, prefix="/api/advisory", tags=["Advisory"])
 app.include_router(market.router, prefix="/api/market", tags=["Market Linkage"])
 app.include_router(dispatch.router, prefix="/api/dispatch", tags=["Message Dispatch"])
+app.include_router(seasons.router, prefix="/api/seasons", tags=["Season Planting"])
+app.include_router(inputs.router, prefix="/api/inputs", tags=["Bill of Quantities"])
+app.include_router(authorized_operators.router, prefix="/api/authorized-operators", tags=["Authorized Operators"])
 
 
 @app.get("/api/health")

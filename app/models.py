@@ -49,6 +49,23 @@ class DispatchChannel(str, enum.Enum):
     whatsapp = "whatsapp"
     radio = "radio"
     in_person = "in_person"
+    telegram = "telegram"
+
+
+class InputCategory(str, enum.Enum):
+    seed = "seed"
+    fertilizer = "fertilizer"
+    pesticide = "pesticide"
+    labour = "labour"
+    other = "other"
+
+
+class FinancierType(str, enum.Enum):
+    farmer = "farmer"
+    corwado = "corwado"
+    financial_institution = "financial_institution"
+    government = "government"
+    ngo = "ngo"
 
 
 class Cooperative(Base):
@@ -72,6 +89,7 @@ class LandSteward(Base):
     whatsapp_number = Column(Text)
     preferred_language = Column(Text, default="juba_arabic")
     preferred_channel = Column(Text)  # sms|ussd|ivr|whatsapp|radio|in_person
+    telegram_chat_id = Column(Text, unique=True)
     gender = Column(SAEnum(GenderType))
     is_youth = Column(Boolean, default=False)
     has_disability = Column(Boolean, default=False)
@@ -191,6 +209,68 @@ class SeasonPlanting(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
+class InputRequirement(Base):
+    """
+    One Bill of Quantities line item for a season_planting cycle --
+    transparent record-keeping only, never a creditworthiness or
+    eligibility signal (same firewall as everywhere else in this
+    project). Costs always in USD; source-currency/fx fields exist so a
+    KES-sourced figure (e.g. agri-venture-v2's economics.json) is
+    auditable and correctable, never silently baked in. See db/schema.sql
+    migration note for the full reasoning.
+    """
+    __tablename__ = "input_requirement"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    season_planting_id = Column(UUID(as_uuid=False), ForeignKey("season_planting.id"), nullable=False)
+    item_name = Column(Text, nullable=False)
+    category = Column(SAEnum(InputCategory), nullable=False)
+    quantity = Column(Numeric, nullable=False)
+    unit = Column(Text, nullable=False)
+    unit_cost_usd = Column(Numeric, nullable=False)
+    # GENERATED column in Postgres (quantity * unit_cost_usd) -- read-only
+    # from SQLAlchemy's side, same pattern as Parcel.area_acres above.
+    total_cost_usd = Column(Numeric, server_default=FetchedValue())
+    currency = Column(Text, nullable=False, default="USD")
+
+    cost_source = Column(Text, nullable=False)
+    baseline_unit_cost_usd = Column(Numeric)
+    source_currency_original = Column(Text)
+    source_amount_original = Column(Numeric)
+    fx_rate_used = Column(Numeric)
+    fx_rate_date = Column(Date)
+    fx_rate_source = Column(Text)
+
+    override_reason = Column(Text)
+    override_by = Column(Text)
+    override_at = Column(DateTime(timezone=True))
+
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class InputFinancingRecord(Base):
+    """
+    One financing/payment record against a single input_requirement line
+    item -- deliberately line-item-scoped, not BoQ-wide, so "who funded
+    what" stays comparable at the resolution that actually matters (see
+    db/schema.sql migration note). No uniqueness constraint on
+    input_requirement_id: multiple records may reference the same line
+    item, which is how split/partial funding falls out of this schema
+    without special-case modeling.
+    """
+    __tablename__ = "input_financing_record"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    input_requirement_id = Column(UUID(as_uuid=False), ForeignKey("input_requirement.id"), nullable=False)
+    financier_type = Column(SAEnum(FinancierType), nullable=False)
+    financier_name = Column(Text)
+    amount_usd = Column(Numeric, nullable=False)
+    currency = Column(Text, nullable=False, default="USD")
+    financed_at = Column(Date, nullable=False)
+    notes = Column(Text)
+    recorded_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class AdvisorySnapshot(Base):
     __tablename__ = "advisory_snapshot"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
@@ -301,6 +381,88 @@ class RadioBroadcastSlot(Base):
     is_active = Column(Boolean, default=True)
 
 
+class InboundMessage(Base):
+    """
+    Inbound side of the dispatch story -- kept separate from
+    MessageDispatch (outbound-only, see below) since a farmer's reply is
+    a different job, not the same table pointed the other way. See
+    db/schema.sql migration note for the full reasoning.
+    """
+    __tablename__ = "inbound_message"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=True)
+    channel = Column(Text, nullable=False, default="telegram")
+    external_chat_id = Column(Text, nullable=False)
+    raw_text = Column(Text, nullable=False)
+    parsed_intent = Column(Text)
+    parsed_params = Column(JSONB)
+    response_text = Column(Text)
+    received_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TelegramConversationState(Base):
+    """
+    One row per Telegram chat, tracking the single pending follow-up
+    question the numbered menu is waiting on (e.g. "send your phone
+    number" after choosing REGISTER). Not a column on LandSteward --
+    REGISTER has to work before a steward row is linked to this chat_id,
+    so this has to be keyed on the chat_id alone. See db/schema.sql
+    migration note for the full reasoning.
+    """
+    __tablename__ = "telegram_conversation_state"
+    chat_id = Column(Text, primary_key=True)
+    awaiting = Column(Text, nullable=True)  # 'phone_for_register' | 'crop_for_price' | 'new_farmer_name' | ... | None
+    # Scratch space for multi-step forms (NEWFARMER: name -> phone ->
+    # gender) that need to remember earlier answers across several
+    # inbound messages -- `awaiting` alone only tracks the next pending
+    # question. See db/schema.sql migration note.
+    context = Column(JSONB, nullable=False, default=dict)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AuthorizedOperator(Base):
+    """
+    CORWADO staff / Digital Champions authorized to create a new
+    land_steward or register a boundary on someone else's behalf via
+    Telegram -- deliberately a separate table from LandSteward, not a
+    role flag on it, since a person can plausibly be both. Populated
+    only by an admin action (POST /api/authorized-operators); chat
+    linking (telegram_chat_id) works the same way REGISTER does for
+    farmers -- the phone_number must already be on this table. See
+    db/schema.sql migration note for the full reasoning.
+    """
+    __tablename__ = "authorized_operator"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    full_name = Column(Text, nullable=False)
+    phone_number = Column(Text, nullable=False, unique=True)
+    role = Column(Text)  # 'corwado_staff' | 'digital_champion' -- reporting only, does not gate anything
+    telegram_chat_id = Column(Text, unique=True)
+    added_by = Column(Text, nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ParcelDrawToken(Base):
+    """
+    Single-use, time-limited credential authorizing one boundary
+    submission for one steward on the public draw-boundary web page --
+    the only "auth" that page has, since no dashboard login exists
+    anywhere in this project. Minted by the Telegram BOUNDARY command
+    with secrets.token_urlsafe(). used_at is set atomically with the
+    parcel insert it authorizes (same transaction -- see
+    app/routers/parcels.py) so it can never be replayed. See
+    db/schema.sql migration note.
+    """
+    __tablename__ = "parcel_draw_token"
+    token = Column(Text, primary_key=True)
+    steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
+    originating_chat_id = Column(Text, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class MessageDispatch(Base):
     __tablename__ = "message_dispatch"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
@@ -313,3 +475,4 @@ class MessageDispatch(Base):
     content_format = Column(Text, default="text")  # text | audio_script | pictorial
     sent_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     delivery_status = Column(Text, default="pending")
+    delivery_note = Column(Text, nullable=True)

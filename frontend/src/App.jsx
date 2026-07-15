@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Users, Sprout, TrendingUp, Radio, MessageSquare, Phone, Smartphone, Plus, X, CheckCircle2, Signal, Loader2, MapPin, Undo2, RotateCcw, ArrowLeft, Building2, Layers, Send, AlertTriangle, GraduationCap, FlaskConical, Image as ImageIcon } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Users, Sprout, TrendingUp, Radio, MessageSquare, Phone, Smartphone, Plus, X, CheckCircle2, Signal, Loader2, MapPin, Undo2, RotateCcw, ArrowLeft, Building2, Layers, Send, AlertTriangle, GraduationCap, FlaskConical, Image as ImageIcon, Receipt, Landmark, Maximize2, Minimize2, Search, ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Trash2 } from 'lucide-react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from './api.js';
@@ -31,10 +31,117 @@ function ClickToAddPoint({ onAdd }) {
   return null;
 }
 
-function ParcelDrawStep({ steward, onSaved, onSkip }) {
+// Shared by both map views (registration draw step, farmer-detail boundary
+// view): Leaflet sizes its canvas from the container's dimensions at mount
+// and doesn't notice a CSS-only resize on its own, so toggling to fullscreen
+// needs an explicit invalidateSize() once the new layout has painted.
+function useExpandableMap() {
+  const [expanded, setExpanded] = useState(false);
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const id = requestAnimationFrame(() => map.invalidateSize());
+    return () => cancelAnimationFrame(id);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') setExpanded(false); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [expanded]);
+
+  return { expanded, setExpanded, mapRef };
+}
+
+function MapExpandButton({ expanded, onClick }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={expanded ? 'Collapse map' : 'Expand map to fill page'}
+      style={{ position: 'absolute', top: 8, right: 8, zIndex: 1000, background: '#fff', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, padding: 6, display: 'flex', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}>
+      {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
+    </button>
+  );
+}
+
+// Place-name search overlaid on a map, backed by OpenStreetMap's free
+// Nominatim geocoder (no API key, same no-key approach already used for
+// the Esri basemap tiles below). Reads mapRef directly rather than living
+// inside <MapContainer> -- react-leaflet v4 forwards that ref to the real
+// Leaflet Map instance (see useExpandableMap's invalidateSize() call above),
+// so this can sit as a plain absolutely-positioned sibling, same as
+// MapExpandButton, without needing a useMap() context.
+function MapSearchControl({ mapRef }) {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('idle'); // idle | searching | error
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  async function handleSearch(e) {
+    e.preventDefault();
+    const q = query.trim();
+    if (!q || status === 'searching') return;
+    setStatus('searching');
+    setErrorMsg(null);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Search request failed');
+      const results = await res.json();
+      if (!results.length) {
+        setStatus('error');
+        setErrorMsg('No location found');
+        return;
+      }
+      const { lat, lon } = results[0];
+      mapRef.current?.flyTo([parseFloat(lat), parseFloat(lon)], 15);
+      setStatus('idle');
+    } catch {
+      setStatus('error');
+      setErrorMsg('Search failed — check your connection');
+    }
+  }
+
+  return (
+    <form onSubmit={handleSearch} role="search"
+      style={{ position: 'absolute', top: 8, left: 8, zIndex: 1000, display: 'flex', gap: 4 }}>
+      <input
+        type="text"
+        value={query}
+        onChange={e => { setQuery(e.target.value); if (status === 'error') setStatus('idle'); }}
+        placeholder="Search location…"
+        aria-label="Search for a location on the map"
+        style={{ border: `1px solid ${COLORS.sage}66`, borderRadius: 6, padding: '6px 8px', fontSize: 13, width: 150, boxShadow: '0 1px 3px rgba(0,0,0,0.25)' }}
+      />
+      <button type="submit" disabled={status === 'searching'} aria-label="Search"
+        style={{ background: '#fff', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, padding: 6, display: 'flex', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', opacity: status === 'searching' ? 0.6 : 1 }}>
+        {status === 'searching' ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Search size={16} aria-hidden="true" />}
+      </button>
+      {status === 'error' && (
+        <span role="alert" style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, fontSize: 12, background: '#fff', color: '#b3261e', padding: '4px 8px', borderRadius: 6, boxShadow: '0 1px 3px rgba(0,0,0,0.25)', whiteSpace: 'nowrap' }}>
+          {errorMsg}
+        </span>
+      )}
+    </form>
+  );
+}
+
+// token: set only by the Telegram BOUNDARY hand-off page (DrawBoundaryPage
+// below) -- when present, the save posts POST /api/parcels with the
+// single-use token instead of steward.id, so the backend resolves (and
+// authorizes) the steward server-side rather than trusting a client-
+// supplied id on a page with no login of its own. Dashboard callers
+// never pass this, so their behavior is unchanged.
+function ParcelDrawStep({ steward, onSaved, onSkip, token }) {
   const [points, setPoints] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const { expanded, setExpanded, mapRef } = useExpandableMap();
 
   const canSave = points.length >= 3;
 
@@ -44,7 +151,10 @@ function ParcelDrawStep({ steward, onSaved, onSkip }) {
     setSaving(true);
     setError(null);
     try {
-      const parcel = await api.registerParcel(steward.id, { type: 'Polygon', coordinates: [ring] });
+      const geojson = { type: 'Polygon', coordinates: [ring] };
+      const parcel = token
+        ? await api.registerParcelWithToken(token, geojson)
+        : await api.registerParcel(steward.id, geojson);
       onSaved(parcel);
     } catch (e) {
       setError(e.message);
@@ -59,11 +169,17 @@ function ParcelDrawStep({ steward, onSaved, onSkip }) {
         Add at least 3 points, then save. This posts a real GeoJSON polygon to <code>POST /api/parcels</code>.
       </p>
 
-      <div style={{ borderRadius: 10, overflow: 'hidden', border: `1px solid ${COLORS.sage}66`, height: 360 }}>
-        <MapContainer center={DEFAULT_MAP_CENTER} zoom={DEFAULT_MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
+      <div style={expanded
+        ? { position: 'fixed', inset: 0, zIndex: 300, background: '#000' }
+        : { position: 'relative', borderRadius: 10, overflow: 'hidden', border: `1px solid ${COLORS.sage}66`, height: 360 }}>
+        <MapContainer ref={mapRef} center={DEFAULT_MAP_CENTER} zoom={DEFAULT_MAP_ZOOM} style={{ height: '100%', width: '100%' }}>
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          />
+          <TileLayer
+            attribution='Labels &copy; Esri'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
           />
           <ClickToAddPoint onAdd={(p) => setPoints(prev => [...prev, p])} />
           {points.length >= 2 && <Polygon positions={points} pathOptions={{ color: COLORS.ochre, fillColor: COLORS.forest, fillOpacity: 0.25 }} />}
@@ -71,6 +187,8 @@ function ParcelDrawStep({ steward, onSaved, onSkip }) {
             <CircleMarker key={i} center={p} radius={5} pathOptions={{ color: COLORS.forest, fillColor: '#fff', fillOpacity: 1, weight: 2 }} />
           ))}
         </MapContainer>
+        <MapSearchControl mapRef={mapRef} />
+        <MapExpandButton expanded={expanded} onClick={() => setExpanded(e => !e)} />
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -187,7 +305,15 @@ const CHANNELS = [
   { key: 'whatsapp', label: 'WhatsApp', icon: Smartphone },
   { key: 'ivr', label: 'IVR (Voice)', icon: Radio },
   { key: 'radio', label: 'Radio', icon: Radio },
+  { key: 'telegram', label: 'Telegram', icon: Send },
 ];
+
+const ROLE_LABELS = {
+  smallholder_farmer: 'Smallholder farmer',
+  cooperative_member: 'Co-op member',
+  investor_partner: 'Investor partner',
+  land_owner: 'Land owner',
+};
 
 const COLORS = {
   forest: '#1f4d2c', forestDark: '#163a20', sand: '#f3ecdb',
@@ -421,6 +547,63 @@ function SuitabilityExplainability({ raw }) {
 // farmer" into a hot path capable of triggering several concurrent live
 // GEE calls. A manual check keeps that cost opt-in, same as the
 // registration flow's ParcelBaselineStep already does for one parcel.
+// Read-only boundary-on-basemap map -- reuses the exact react-leaflet
+// setup already proven in ParcelDrawStep's registration flow (same
+// TileLayer/Polygon components), just without the click-to-add-point
+// drawing/editing behavior. Fed entirely from the parcel's already-stored
+// geom via the existing GET /api/parcels response -- no new API call,
+// no agri-venture-v2 dependency.
+//
+// Basemap is Esri World Imagery (satellite) with the Esri reference
+// overlay (roads/places) on top -- a third-party basemap, not derived
+// from agri-venture-v2's own analysis. agri-venture-v2 still has no
+// true-color RGB thumbnail endpoint of its own (confirmed by reading
+// providers/thumbnails.py in full -- only NDVI/land-use/rainfall
+// color-ramp visualizations exist), so "Farm boundary" stays the label:
+// the imagery is stock satellite context for the boundary, not an
+// agri-venture-v2-derived visualization.
+function FarmBoundaryMap({ parcel }) {
+  const { expanded, setExpanded, mapRef } = useExpandableMap();
+
+  const ring = parcel.geojson?.coordinates?.[0];
+  if (!ring || ring.length < 3) return null;
+
+  // GeoJSON is [lon, lat]; Leaflet wants [lat, lon] -- same flip
+  // ParcelDrawStep's closeRing() does in reverse when saving.
+  const positions = ring.map(([lon, lat]) => [lat, lon]);
+  const lats = positions.map(p => p[0]);
+  const lons = positions.map(p => p[1]);
+  const bounds = [
+    [Math.min(...lats), Math.min(...lons)],
+    [Math.max(...lats), Math.max(...lons)],
+  ];
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88', marginBottom: 6 }}>
+        Farm boundary
+      </div>
+      <div style={expanded
+        ? { position: 'fixed', inset: 0, zIndex: 300, background: '#000' }
+        : { position: 'relative', borderRadius: 8, overflow: 'hidden', border: `1px solid ${COLORS.sage}66`, height: 200 }}>
+        <MapContainer ref={mapRef} bounds={bounds} boundsOptions={{ padding: [16, 16] }} style={{ height: '100%', width: '100%' }}>
+          <TileLayer
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          />
+          <TileLayer
+            attribution='Labels &copy; Esri'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+          />
+          <Polygon positions={positions} pathOptions={{ color: COLORS.ochre, fillColor: COLORS.forest, fillOpacity: 0.2, weight: 2 }} />
+        </MapContainer>
+        <MapSearchControl mapRef={mapRef} />
+        <MapExpandButton expanded={expanded} onClick={() => setExpanded(e => !e)} />
+      </div>
+    </div>
+  );
+}
+
 function ParcelSuitabilityCard({ parcel }) {
   const [status, setStatus] = useState('idle'); // idle | loading | done | error
   const [result, setResult] = useState(null);
@@ -443,6 +626,8 @@ function ParcelSuitabilityCard({ parcel }) {
 
   return (
     <div style={{ border: `1px solid ${COLORS.sage}44`, borderRadius: 10, padding: 14 }}>
+      <FarmBoundaryMap parcel={parcel} />
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>
           {parcel.area_acres ? `${parcel.area_acres.toFixed(2)} acres` : 'Area pending'}
@@ -510,6 +695,23 @@ function ParcelSuitabilityCard({ parcel }) {
             <SuitabilityExplainability raw={result.baseline_suitability_raw} />
           </div>
         )}
+      </div>
+
+      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${COLORS.sage}33` }}>
+        {/* Collapsible as a display-only toggle -- <details> hides its
+            content with CSS, it doesn't unmount it, so season/BoQ/
+            financing state (including any in-progress override or
+            financing form) survives a collapse/re-expand with no
+            re-fetch. Defaults open so first load looks unchanged, same
+            pattern as the Land-use map disclosure above. */}
+        <details open>
+          <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.forest, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Receipt size={14} aria-hidden="true" /> Bill of Quantities &amp; financing
+          </summary>
+          <div style={{ marginTop: 10 }}>
+            <SeasonAndBoQSection parcel={parcel} />
+          </div>
+        </details>
       </div>
     </div>
   );
@@ -928,6 +1130,408 @@ function FarmLabReport({ parcel }) {
   );
 }
 
+function fmtUSD(n) {
+  const v = Number(n);
+  return Number.isFinite(v) ? `$${v.toFixed(2)}` : '—';
+}
+
+const COST_SOURCE_STYLE = {
+  agriventure_kalro_baseline: { label: 'AGRI-VENTURE BASELINE', color: COLORS.forest },
+  corwado_override: { label: 'CORWADO OVERRIDE', color: COLORS.ochre },
+  farmer_reported: { label: 'FARMER REPORTED', color: '#2171b5' },
+};
+
+function CostSourceBadge({ source }) {
+  const s = COST_SOURCE_STYLE[source] || { label: (source || '?').toUpperCase(), color: COLORS.charcoal };
+  return (
+    <span style={{
+      display: 'inline-block', fontSize: 10, fontWeight: 700, letterSpacing: '0.03em',
+      color: s.color, border: `1px solid ${s.color}66`, background: s.color + '14',
+      padding: '2px 7px', borderRadius: 4, whiteSpace: 'nowrap',
+    }}>
+      {s.label}
+    </span>
+  );
+}
+
+const FINANCIER_LABELS = {
+  farmer: 'Farmer', corwado: 'CORWADO', financial_institution: 'Financial institution',
+  government: 'Government', ngo: 'NGO',
+};
+
+// Explicitly a transparent record-keeping tool, NOT a creditworthiness
+// or eligibility signal -- same firewall enforced everywhere else in
+// this project. This whole section only stores and displays what was
+// entered; nothing here scores, recommends, or approves/declines.
+function AddFinancingForm({ requirementId, onAdded }) {
+  const [financierType, setFinancierType] = useState('farmer');
+  const [financierName, setFinancierName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [financedAt, setFinancedAt] = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!amount || Number(amount) <= 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const record = await api.recordFinancing(requirementId, financierType, Number(amount), financedAt, financierName, notes);
+      onAdded(record);
+      setAmount(''); setFinancierName(''); setNotes('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+      <select value={financierType} onChange={e => setFinancierType(e.target.value)}
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12 }}>
+        {Object.entries(FINANCIER_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      <input placeholder="Financier name (optional)" value={financierName} onChange={e => setFinancierName(e.target.value)}
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 150 }} />
+      <input type="number" step="0.01" min="0.01" placeholder="Amount USD" value={amount} onChange={e => setAmount(e.target.value)} required
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 100 }} />
+      <input type="date" value={financedAt} onChange={e => setFinancedAt(e.target.value)} required
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12 }} />
+      <input placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)}
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 140 }} />
+      <button type="submit" disabled={saving}
+        style={{ background: COLORS.forest, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Saving…' : 'Record financing'}
+      </button>
+      {error && <span style={{ fontSize: 11, color: COLORS.clay }}>{error}</span>}
+    </form>
+  );
+}
+
+function OverrideForm({ requirement, onOverridden, onCancel }) {
+  const [unitCost, setUnitCost] = useState(requirement.unit_cost_usd);
+  const [reason, setReason] = useState('');
+  const [by, setBy] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!reason.trim() || !by.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.overrideInputRequirement(requirement.id, Number(unitCost), reason, by);
+      onOverridden(updated);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6, background: COLORS.sand, padding: 8, borderRadius: 6 }}>
+      <input type="number" step="0.01" min="0" value={unitCost} onChange={e => setUnitCost(e.target.value)} required
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 90 }} />
+      <input placeholder="Reason (required)" value={reason} onChange={e => setReason(e.target.value)} required
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 200 }} />
+      <input placeholder="Your name (required)" value={by} onChange={e => setBy(e.target.value)} required
+        style={{ padding: '5px 6px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 130 }} />
+      <button type="submit" disabled={saving}
+        style={{ background: COLORS.forest, color: '#fff', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+        {saving ? 'Saving…' : 'Save override'}
+      </button>
+      <button type="button" onClick={onCancel} style={{ background: 'none', border: 'none', color: COLORS.charcoal + '88', fontSize: 12 }}>
+        Cancel
+      </button>
+      {error && <span style={{ fontSize: 11, color: COLORS.clay }}>{error}</span>}
+    </form>
+  );
+}
+
+function BoQLineItem({ requirement, financingRecords, onOverridden, onFinancingAdded }) {
+  const [overriding, setOverriding] = useState(false);
+  const funded = financingRecords.reduce((sum, r) => sum + Number(r.amount_usd), 0);
+  const total = Number(requirement.total_cost_usd) || 0;
+  const outstanding = total - funded;
+
+  return (
+    <div style={{ border: `1px solid ${COLORS.sage}33`, borderRadius: 8, padding: 10, marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }}>
+        <div>
+          <span style={{ fontWeight: 600, fontSize: 13 }}>{requirement.item_name}</span>
+          <span style={{ fontSize: 11, color: COLORS.charcoal + '88', marginLeft: 8, textTransform: 'capitalize' }}>{requirement.category}</span>
+        </div>
+        <CostSourceBadge source={requirement.cost_source} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 8, fontSize: 12 }}>
+        <div>
+          <div style={{ color: COLORS.charcoal + '88', fontSize: 10 }}>Quantity</div>
+          <div>{requirement.quantity} {requirement.unit}</div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.charcoal + '88', fontSize: 10 }}>Unit cost</div>
+          <div>
+            {fmtUSD(requirement.unit_cost_usd)}
+            {requirement.cost_source === 'corwado_override' && requirement.baseline_unit_cost_usd != null && (
+              <span style={{ color: COLORS.charcoal + '88' }}> (baseline: {fmtUSD(requirement.baseline_unit_cost_usd)})</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.charcoal + '88', fontSize: 10 }}>Total cost</div>
+          <div style={{ fontWeight: 600 }}>{fmtUSD(requirement.total_cost_usd)}</div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.charcoal + '88', fontSize: 10 }}>Funded / Outstanding</div>
+          <div>
+            <span style={{ color: COLORS.forest, fontWeight: 600 }}>{fmtUSD(funded)}</span>
+            {' / '}
+            <span style={{ color: outstanding > 0.005 ? COLORS.clay : COLORS.forest, fontWeight: 600 }}>{fmtUSD(outstanding)}</span>
+          </div>
+        </div>
+      </div>
+
+      {requirement.cost_source === 'corwado_override' && requirement.override_reason && (
+        <p style={{ fontSize: 11, color: COLORS.charcoal + '88', margin: '6px 0 0' }}>
+          Overridden by {requirement.override_by} — "{requirement.override_reason}"
+        </p>
+      )}
+
+      {!overriding ? (
+        <button type="button" onClick={() => setOverriding(true)}
+          style={{ background: 'none', border: `1px solid ${COLORS.forest}55`, color: COLORS.forest, borderRadius: 6, padding: '4px 8px', fontSize: 11, fontWeight: 600, marginTop: 8 }}>
+          Override cost
+        </button>
+      ) : (
+        <OverrideForm requirement={requirement} onCancel={() => setOverriding(false)}
+          onOverridden={(updated) => { onOverridden(updated); setOverriding(false); }} />
+      )}
+
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${COLORS.sage}22` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em', color: COLORS.charcoal + '88', marginBottom: 4 }}>
+          Financing records
+        </div>
+        {financingRecords.length === 0 && (
+          <p style={{ fontSize: 12, color: COLORS.charcoal + '88', margin: 0 }}>No financing recorded yet for this line item.</p>
+        )}
+        {financingRecords.map(r => (
+          <div key={r.id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, padding: '4px 0' }}>
+            <span style={{ fontWeight: 600 }}>{FINANCIER_LABELS[r.financier_type] || r.financier_type}</span>
+            {r.financier_name && <span style={{ color: COLORS.charcoal + 'aa' }}>{r.financier_name}</span>}
+            <span style={{ fontFamily: 'monospace' }}>{fmtUSD(r.amount_usd)}</span>
+            <span style={{ color: COLORS.charcoal + '88' }}>{r.financed_at}</span>
+            {r.notes && <span style={{ color: COLORS.charcoal + '88' }}>— {r.notes}</span>}
+          </div>
+        ))}
+        <AddFinancingForm requirementId={requirement.id} onAdded={onFinancingAdded} />
+      </div>
+    </div>
+  );
+}
+
+function SeasonRollup({ requirements, financingRecords }) {
+  const totalCost = requirements.reduce((sum, r) => sum + (Number(r.total_cost_usd) || 0), 0);
+  const totalFunded = financingRecords.reduce((sum, r) => sum + Number(r.amount_usd), 0);
+  const outstanding = totalCost - totalFunded;
+
+  const byFinancier = {};
+  for (const r of financingRecords) {
+    byFinancier[r.financier_type] = (byFinancier[r.financier_type] || 0) + Number(r.amount_usd);
+  }
+
+  return (
+    <div style={{ background: COLORS.sand, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 10, color: COLORS.charcoal + '88', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Total cost</div>
+          <div style={{ fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600 }}>{fmtUSD(totalCost)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: COLORS.charcoal + '88', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Funded so far</div>
+          <div style={{ fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600, color: COLORS.forest }}>{fmtUSD(totalFunded)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: COLORS.charcoal + '88', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Outstanding</div>
+          <div style={{ fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600, color: outstanding > 0.005 ? COLORS.clay : COLORS.forest }}>{fmtUSD(outstanding)}</div>
+        </div>
+      </div>
+      {Object.keys(byFinancier).length > 0 && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 12, paddingTop: 10, borderTop: `1px solid ${COLORS.sage}33` }}>
+          {Object.entries(byFinancier).map(([type, amount]) => (
+            <div key={type} style={{ fontSize: 12 }}>
+              <span style={{ color: COLORS.charcoal + '88' }}>{FINANCIER_LABELS[type] || type}: </span>
+              <span style={{ fontWeight: 600 }}>{fmtUSD(amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BoQSection({ season }) {
+  const [status, setStatus] = useState('loading'); // loading | done | error
+  const [requirements, setRequirements] = useState(null);
+  const [financingRecords, setFinancingRecords] = useState([]);
+  const [error, setError] = useState(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedError, setSeedError] = useState(null);
+
+  const load = useCallback(() => {
+    setStatus('loading');
+    setError(null);
+    Promise.all([
+      api.listInputRequirements(season.id),
+      api.listFinancingBySeason(season.id),
+    ])
+      .then(([reqs, financing]) => { setRequirements(reqs); setFinancingRecords(financing); setStatus('done'); })
+      .catch(e => { setError(e.message); setStatus('error'); });
+  }, [season.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function seedBaseline() {
+    setSeeding(true);
+    setSeedError(null);
+    try {
+      const rows = await api.seedBoqBaseline(season.id);
+      setRequirements(rows);
+    } catch (e) {
+      setSeedError(e.message);
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  if (status === 'loading') return <LoadingState label="Loading Bill of Quantities…" />;
+  if (status === 'error') return <ErrorBanner message={error} onRetry={load} />;
+
+  if (requirements.length === 0) {
+    return (
+      <div>
+        <p style={{ fontSize: 13, color: COLORS.charcoal + '88' }}>
+          No Bill of Quantities yet for this season.
+        </p>
+        <button type="button" onClick={seedBaseline} disabled={seeding}
+          style={{ background: COLORS.forest, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, opacity: seeding ? 0.6 : 1 }}>
+          {seeding ? 'Seeding…' : 'Seed from agri-venture-v2 baseline (maize)'}
+        </button>
+        {seedError && <div style={{ marginTop: 8 }}><ErrorBanner message={seedError} onRetry={seedBaseline} /></div>}
+      </div>
+    );
+  }
+
+  function handleOverridden(updated) {
+    setRequirements(prev => prev.map(r => r.id === updated.id ? updated : r));
+  }
+
+  function handleFinancingAdded(record) {
+    setFinancingRecords(prev => [...prev, record]);
+  }
+
+  return (
+    <div>
+      <SeasonRollup requirements={requirements} financingRecords={financingRecords} />
+      {requirements.map(r => (
+        <BoQLineItem
+          key={r.id}
+          requirement={r}
+          financingRecords={financingRecords.filter(f => f.input_requirement_id === r.id)}
+          onOverridden={handleOverridden}
+          onFinancingAdded={handleFinancingAdded}
+        />
+      ))}
+    </div>
+  );
+}
+
+function StartSeasonForm({ parcelId, onStarted }) {
+  const [crop, setCrop] = useState(BASELINE_CROP);
+  const [sowingDate, setSowingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [seasonLabel, setSeasonLabel] = useState('2026 Wet Season');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function submit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const season = await api.startSeason(parcelId, crop, sowingDate, seasonLabel);
+      onStarted(season);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <p style={{ fontSize: 12, color: COLORS.charcoal + '88', marginTop: 0 }}>
+        No season started yet — a Bill of Quantities belongs to a specific planting cycle, not the parcel in general.
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <input value={crop} onChange={e => setCrop(e.target.value)} placeholder="Crop"
+          style={{ padding: '6px 8px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 100 }} />
+        <input type="date" value={sowingDate} onChange={e => setSowingDate(e.target.value)}
+          style={{ padding: '6px 8px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12 }} />
+        <input value={seasonLabel} onChange={e => setSeasonLabel(e.target.value)} placeholder="Season label"
+          style={{ padding: '6px 8px', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, fontSize: 12, width: 160 }} />
+        <button type="submit" disabled={saving}
+          style={{ background: COLORS.forest, color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+          {saving ? 'Starting…' : 'Start a season'}
+        </button>
+      </div>
+      {error && <div style={{ marginTop: 8 }}><ErrorBanner message={error} onRetry={submit} /></div>}
+    </form>
+  );
+}
+
+function SeasonAndBoQSection({ parcel }) {
+  const [status, setStatus] = useState('loading'); // loading | done | error
+  const [seasons, setSeasons] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(() => {
+    setStatus('loading');
+    setError(null);
+    api.listSeasons(parcel.id)
+      .then(res => { setSeasons(res); setStatus('done'); })
+      .catch(e => { setError(e.message); setStatus('error'); });
+  }, [parcel.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (status === 'loading') return <LoadingState label="Loading season data…" />;
+  if (status === 'error') return <ErrorBanner message={error} onRetry={load} />;
+
+  const currentSeason = seasons[0]; // already ordered most-recent-first by the backend
+
+  return (
+    <div>
+      {!currentSeason && <StartSeasonForm parcelId={parcel.id} onStarted={(s) => setSeasons([s])} />}
+
+      {currentSeason && (
+        <div>
+          <div style={{ fontSize: 12, color: COLORS.charcoal + '88', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Landmark size={13} aria-hidden="true" />
+            {currentSeason.season_label || 'Season'} · {currentSeason.crop_name}
+            {currentSeason.sowing_date && ` · sown ${currentSeason.sowing_date}`}
+          </div>
+          <BoQSection season={currentSeason} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FarmerParcelsSection({ stewardId }) {
   const [status, setStatus] = useState('loading');
   const [parcels, setParcels] = useState(null);
@@ -1012,6 +1616,346 @@ function FarmerDispatchSection({ stewardId }) {
   );
 }
 
+// Dashboard farmer roster, combined from three already-fetched lists
+// (stewards + every parcel + every season_planting, see loadDashboardData)
+// rather than an N+1 fetch per farmer -- listParcels()/listSeasons() both
+// return everything when called with no id, so this is 2 extra requests
+// total regardless of roster size, joined here in JS.
+function useFarmerRows(stewards, parcels, seasons) {
+  return useMemo(() => {
+    const parcelsByFarmer = new Map();
+    const farmerIdByParcel = new Map();
+    for (const p of parcels || []) {
+      farmerIdByParcel.set(p.id, p.steward_id);
+      const list = parcelsByFarmer.get(p.steward_id) || [];
+      list.push(p);
+      parcelsByFarmer.set(p.steward_id, list);
+    }
+    const cropsByFarmer = new Map();
+    for (const s of seasons || []) {
+      const farmerId = farmerIdByParcel.get(s.parcel_id);
+      if (!farmerId) continue;
+      const set = cropsByFarmer.get(farmerId) || new Set();
+      set.add(s.crop_name);
+      cropsByFarmer.set(farmerId, set);
+    }
+    return (stewards || []).map(s => {
+      const farmerParcels = parcelsByFarmer.get(s.id) || [];
+      return {
+        steward: s,
+        parcelCount: farmerParcels.length,
+        totalAcres: farmerParcels.reduce((sum, p) => sum + (p.area_acres || 0), 0),
+        crops: Array.from(cropsByFarmer.get(s.id) || []),
+      };
+    });
+  }, [stewards, parcels, seasons]);
+}
+
+function SortHeader({ label, sortKey, active, dir, onSort }) {
+  return (
+    <th scope="col" style={{ padding: '10px 12px', textAlign: 'left' }}>
+      <button type="button" onClick={() => onSort(sortKey)}
+        aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        style={{
+          background: 'none', border: 'none', padding: 0, display: 'flex', alignItems: 'center', gap: 4,
+          fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+          color: COLORS.charcoal + (active ? 'dd' : '88'), cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>
+        {label}
+        {active
+          ? (dir === 'asc' ? <ChevronUp size={12} aria-hidden="true" /> : <ChevronDown size={12} aria-hidden="true" />)
+          : <ChevronsUpDown size={12} aria-hidden="true" style={{ opacity: 0.35 }} />}
+      </button>
+    </th>
+  );
+}
+
+function FarmersTable({ stewards, parcels, seasons, onSelect, onEdit, onDelete }) {
+  const rows = useFarmerRows(stewards, parcels, seasons);
+  const [sortKey, setSortKey] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+
+  function handleSort(key) {
+    if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  }
+
+  const sorted = useMemo(() => {
+    const value = (row) => {
+      switch (sortKey) {
+        case 'name': return row.steward.full_name?.toLowerCase() ?? '';
+        case 'gender': return row.steward.gender?.toLowerCase() ?? '';
+        case 'role': return (ROLE_LABELS[row.steward.role] || row.steward.role || '').toLowerCase();
+        case 'land': return row.totalAcres;
+        case 'crops': return row.crops.length;
+        case 'registered': return row.steward.created_at ? new Date(row.steward.created_at).getTime() : 0;
+        default: return '';
+      }
+    };
+    return [...rows].sort((a, b) => {
+      const av = value(a), bv = value(b);
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [rows, sortKey, sortDir]);
+
+  if (!rows.length) return null;
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      {/* width: '100%' + table-layout: fixed would make the browser scale the
+          colgroup widths below down to fit the card instead of honoring them
+          literally -- which is exactly what was squeezing the Actions column
+          down to nothing. Fixed to a concrete width (sum of every <col>
+          below) so columns stay their declared size and the wrapping
+          overflow-x: auto div scrolls instead, on any viewport narrower
+          than that. */}
+      <table className="farmers-table" style={{ width: 1004, minWidth: 1004, tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 13.5 }}>
+        <colgroup>
+          <col style={{ width: 190 }} />{/* Farmer — name + youth/accessibility flags, widest column since it carries the most */}
+          <col style={{ width: 90 }} />{/* Gender */}
+          <col style={{ width: 150 }} />{/* Role */}
+          <col style={{ width: 110 }} />{/* Land size */}
+          <col style={{ width: 150 }} />{/* Crops — a handful of short badge words, doesn't need 220px */}
+          <col style={{ width: 120 }} />{/* Channel */}
+          <col style={{ width: 110 }} />{/* Registered */}
+          <col style={{ width: 84 }} />{/* Actions */}
+        </colgroup>
+        <thead>
+          <tr style={{ borderBottom: `2px solid ${COLORS.sage}44` }}>
+            <SortHeader label="Farmer" sortKey="name" active={sortKey === 'name'} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Gender" sortKey="gender" active={sortKey === 'gender'} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Role" sortKey="role" active={sortKey === 'role'} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Land size" sortKey="land" active={sortKey === 'land'} dir={sortDir} onSort={handleSort} />
+            <SortHeader label="Crops" sortKey="crops" active={sortKey === 'crops'} dir={sortDir} onSort={handleSort} />
+            <th scope="col" style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: COLORS.charcoal + '88' }}>Channel</th>
+            <SortHeader label="Registered" sortKey="registered" active={sortKey === 'registered'} dir={sortDir} onSort={handleSort} />
+            <th scope="col" style={{ padding: '10px 12px' }}><span className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row, i) => {
+            const s = row.steward;
+            return (
+              <tr key={s.id} style={{ background: i % 2 === 1 ? COLORS.sand + '55' : 'transparent' }}>
+                <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                  <FarmerNameLink steward={s} onSelect={onSelect} />
+                  {(s.is_youth || s.has_disability) && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                      {s.is_youth && <span style={{ fontSize: 10.5, color: COLORS.ochre, fontWeight: 700 }}>Youth</span>}
+                      {s.has_disability && <span style={{ fontSize: 10.5, color: COLORS.clay, fontWeight: 700 }}>Accessibility flagged</span>}
+                    </div>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', textTransform: 'capitalize', color: COLORS.charcoal + 'cc', verticalAlign: 'top' }}>{s.gender || '—'}</td>
+                <td style={{ padding: '10px 12px', color: COLORS.charcoal + 'cc', verticalAlign: 'top' }}>{ROLE_LABELS[s.role] || s.role}</td>
+                <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                  {row.parcelCount > 0 ? (
+                    <>
+                      <div style={{ fontWeight: 600 }}>{row.totalAcres.toFixed(1)} ac</div>
+                      <div style={{ fontSize: 11, color: COLORS.charcoal + '88' }}>{row.parcelCount} parcel{row.parcelCount === 1 ? '' : 's'}</div>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 12, color: COLORS.clay, fontWeight: 600 }}>Not yet mapped</span>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', maxWidth: 220, verticalAlign: 'top' }}>
+                  {row.crops.length ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {row.crops.map(c => (
+                        <span key={c} style={{ fontSize: 11, textTransform: 'capitalize', background: COLORS.sage + '22', color: COLORS.forestDark, padding: '2px 8px', borderRadius: 20, fontWeight: 600 }}>{c}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: COLORS.charcoal + '77' }}>None planted yet</span>
+                  )}
+                </td>
+                <td style={{ padding: '10px 12px', verticalAlign: 'top' }}><ChannelBadge channelKey={s.preferred_channel} /></td>
+                <td style={{ padding: '10px 12px', fontSize: 12.5, color: COLORS.charcoal + '99', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                  {s.created_at ? new Date(s.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                </td>
+                <td style={{ padding: '10px 12px', verticalAlign: 'top' }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button type="button" onClick={() => onEdit(s)} aria-label={`Edit ${s.full_name}`}
+                      style={{ background: 'none', border: `1px solid ${COLORS.sage}66`, borderRadius: 6, padding: 6, display: 'flex', color: COLORS.forest }}>
+                      <Pencil size={14} aria-hidden="true" />
+                    </button>
+                    <button type="button" onClick={() => onDelete(s)} aria-label={`Delete ${s.full_name}`}
+                      style={{ background: 'none', border: `1px solid ${COLORS.clay}66`, borderRadius: 6, padding: 6, display: 'flex', color: COLORS.clay }}>
+                      <Trash2 size={14} aria-hidden="true" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Reuses the exact modal shell (role="dialog"/aria-modal, overlay,
+// rounded white panel) that the registration flow's dialog already
+// established below, so "edit" and "delete" don't introduce a second
+// visual language for popups.
+function EditFarmerDialog({ steward, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    full_name: steward.full_name || '',
+    gender: steward.gender || '',
+    role: steward.role || 'smallholder_farmer',
+    phone_number: steward.phone_number || '',
+    preferred_channel: steward.preferred_channel || 'sms',
+    is_youth: !!steward.is_youth,
+    has_disability: !!steward.has_disability,
+    disability_notes: steward.disability_notes || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateSteward(steward.id, {
+        ...form,
+        gender: form.gender || null,
+        phone_number: form.phone_number || null,
+        disability_notes: form.has_disability ? (form.disability_notes || null) : null,
+      });
+      onSaved(updated);
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="edit-farmer-title"
+      style={{ position: 'fixed', inset: 0, background: '#00000055', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}>
+      <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 420, maxWidth: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2 id="edit-farmer-title" style={{ fontFamily: 'Newsreader, serif', fontSize: 18, fontWeight: 600, margin: 0 }}>Edit farmer</h2>
+          <button type="button" onClick={onClose} aria-label="Close dialog" style={{ background: 'none', border: 'none' }}><X size={20} aria-hidden="true" /></button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="edit_full_name" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Full name</label>
+          <input id="edit_full_name" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} required
+            style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14 }} />
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="edit_gender" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Gender</label>
+              <select id="edit_gender" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })}
+                style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14 }}>
+                <option value="">Not specified</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label htmlFor="edit_role" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Role</label>
+              <select id="edit_role" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
+                style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14 }}>
+                {Object.entries(ROLE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <label htmlFor="edit_phone" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Phone number</label>
+          <input id="edit_phone" value={form.phone_number} onChange={e => setForm({ ...form, phone_number: e.target.value })}
+            style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14 }} />
+
+          <label htmlFor="edit_channel" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Preferred channel</label>
+          <select id="edit_channel" value={form.preferred_channel} onChange={e => setForm({ ...form, preferred_channel: e.target.value })}
+            style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14 }}>
+            {CHANNELS.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
+
+          <div style={{ display: 'flex', gap: 16, margin: '4px 0 8px' }}>
+            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={form.is_youth} onChange={e => setForm({ ...form, is_youth: e.target.checked })} /> Youth
+            </label>
+            <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={form.has_disability} onChange={e => setForm({ ...form, has_disability: e.target.checked })} /> Accessibility needs
+            </label>
+          </div>
+
+          {form.has_disability && (
+            <>
+              <label htmlFor="edit_disability_notes" style={{ fontSize: 12, fontWeight: 600, color: COLORS.charcoal + 'aa' }}>Accessibility notes</label>
+              <textarea id="edit_disability_notes" value={form.disability_notes} onChange={e => setForm({ ...form, disability_notes: e.target.value })} rows={2}
+                style={{ width: '100%', padding: 10, border: `1px solid ${COLORS.sage}66`, borderRadius: 8, margin: '4px 0 12px', fontSize: 14, fontFamily: 'inherit', resize: 'vertical' }} />
+            </>
+          )}
+
+          {error && <ErrorBanner message={error} />}
+
+          <button type="submit" disabled={saving}
+            style={{ width: '100%', background: COLORS.forest, color: '#fff', border: 'none', borderRadius: 8, padding: 12, fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: saving ? 0.7 : 1, marginTop: 4 }}>
+            {saving && <Loader2 size={16} className="spin" aria-hidden="true" />}
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteFarmerDialog({ steward, onClose, onDeleted }) {
+  const [status, setStatus] = useState('idle'); // idle | deleting | error
+  const [error, setError] = useState(null);
+
+  async function handleDelete() {
+    setStatus('deleting');
+    setError(null);
+    try {
+      await api.deleteSteward(steward.id);
+      onDeleted();
+    } catch (e) {
+      setStatus('error');
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="delete-farmer-title"
+      style={{ position: 'fixed', inset: 0, background: '#00000055', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 50 }}>
+      <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 400, maxWidth: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h2 id="delete-farmer-title" style={{ fontFamily: 'Newsreader, serif', fontSize: 18, fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertTriangle size={18} aria-hidden="true" color={COLORS.clay} /> Delete farmer?
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close dialog" style={{ background: 'none', border: 'none' }}><X size={20} aria-hidden="true" /></button>
+        </div>
+
+        <p style={{ fontSize: 14, color: COLORS.charcoal + 'cc' }}>
+          This permanently removes <strong>{steward.full_name}</strong> from the database. This can't be undone.
+        </p>
+
+        {status === 'error' && <ErrorBanner message={error} />}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+          <button type="button" onClick={onClose} disabled={status === 'deleting'}
+            style={{ background: 'none', border: `1px solid ${COLORS.sage}66`, borderRadius: 8, padding: '9px 16px', fontWeight: 600, fontSize: 13 }}>
+            Cancel
+          </button>
+          <button type="button" onClick={handleDelete} disabled={status === 'deleting'}
+            style={{ background: COLORS.clay, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 16px', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: status === 'deleting' ? 0.7 : 1 }}>
+            {status === 'deleting' ? <Loader2 size={14} className="spin" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
+            {status === 'deleting' ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FarmerDetailView({ stewardId, onBack }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -1044,9 +1988,91 @@ function FarmerDetailView({ stewardId, onBack }) {
   );
 }
 
+// Standalone page for the Telegram BOUNDARY hand-off (see
+// app/services/telegram_inbound.py's _handle_boundary and
+// app/routers/parcels.py's draw-token endpoints). Mounted directly by
+// main.jsx instead of App() -- this project has no client-side router,
+// and a farmer/staffer opening this link has no dashboard session (no
+// login exists anywhere in this app), so it can't be a tab inside App's
+// normal shell. The token itself is the page's only authorization:
+// GET /api/parcels/draw-token/{token} validates it before anything is
+// drawn, and POST /api/parcels (via ParcelDrawStep's token prop above)
+// validates and atomically consumes it again on save.
+export function DrawBoundaryPage({ token }) {
+  const [status, setStatus] = useState('loading'); // loading | ready | error | done
+  const [steward, setSteward] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    api.getDrawToken(token)
+      .then(info => { setSteward(info); setStatus('ready'); })
+      .catch(e => { setErrorMsg(e.message); setStatus('error'); });
+  }, [token]);
+
+  return (
+    <div style={{
+      fontFamily: 'Inter, sans-serif', background: COLORS.sand, minHeight: '100vh',
+      color: COLORS.charcoal, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+        button { cursor: pointer; font-family: inherit; }
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        ${FOCUS_STYLE}
+      `}</style>
+
+      <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 560, maxWidth: '100%' }}>
+        <h1 style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600, margin: '0 0 16px' }}>
+          {status === 'ready' && steward ? `Trace ${steward.full_name}'s farm boundary` : 'CORWADO — Farm boundary'}
+        </h1>
+
+        {status === 'loading' && (
+          <div role="status" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '24px 0', color: COLORS.charcoal + 'aa' }}>
+            <Loader2 size={18} className="spin" aria-hidden="true" /> Checking link…
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div role="alert" style={{
+            background: '#fdecea', border: '1px solid #a8562f55', color: COLORS.clay,
+            padding: '12px 16px', borderRadius: 8,
+          }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {status === 'ready' && steward && (
+          <ParcelDrawStep
+            steward={steward}
+            token={token}
+            onSaved={() => { setSaved(true); setStatus('done'); }}
+            onSkip={() => setStatus('done')}
+          />
+        )}
+
+        {status === 'done' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', padding: '24px 0', textAlign: 'center' }}>
+            <CheckCircle2 size={28} color={COLORS.forest} aria-hidden="true" />
+            <p style={{ margin: 0 }}>
+              {saved
+                ? 'Boundary saved — a confirmation has been sent back to the Telegram chat that generated this link.'
+                : 'No boundary saved. You can close this page.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState('dashboard');
   const [stewards, setStewards] = useState(null);
+  const [parcels, setParcels] = useState(null);
+  const [seasons, setSeasons] = useState(null);
   const [prices, setPrices] = useState(null);
   const [postings, setPostings] = useState(null);
   const [error, setError] = useState(null);
@@ -1060,17 +2086,23 @@ export default function App() {
   // null = list view; set = the "bank account" style full profile for
   // that farmer, replacing the current tab's content until Back is hit.
   const [selectedStewardId, setSelectedStewardId] = useState(null);
+  const [editingSteward, setEditingSteward] = useState(null);
+  const [deletingSteward, setDeletingSteward] = useState(null);
 
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [s, p, po] = await Promise.all([
+      const [s, parc, seas, p, po] = await Promise.all([
         api.listStewards(),
+        api.listParcels().catch(() => []), // land-size/crops columns are a bonus, not core dashboard data
+        api.listSeasons().catch(() => []),
         api.listPrices().catch(() => []), // don't let one failed endpoint block the whole page
         api.listPostings().catch(() => []),
       ]);
       setStewards(s);
+      setParcels(parc);
+      setSeasons(seas);
       setPrices(p);
       setPostings(po);
     } catch (e) {
@@ -1130,6 +2162,7 @@ export default function App() {
         input, select { font-family: inherit; }
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .farmers-table tbody tr:hover { background: ${COLORS.sage}22 !important; }
         ${FOCUS_STYLE}
       `}</style>
 
@@ -1195,16 +2228,8 @@ export default function App() {
                   <code style={{ background: COLORS.sand, padding: '2px 6px', borderRadius: 4, marginLeft: 4 }}>python -m app.seed</code> against the backend.
                 </p>
               )}
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                {stewards?.map((s, i) => (
-                  <li key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i > 0 ? `1px solid ${COLORS.sage}22` : 'none' }}>
-                    <FarmerNameLink steward={s} onSelect={setSelectedStewardId} />
-                    <ChannelBadge channelKey={s.preferred_channel} />
-                    {s.is_youth && <span style={{ fontSize: 11, color: COLORS.ochre, fontWeight: 600 }}>Youth</span>}
-                    {s.has_disability && <span style={{ fontSize: 11, color: COLORS.clay, fontWeight: 600 }}>Accessibility flagged</span>}
-                  </li>
-                ))}
-              </ul>
+              <FarmersTable stewards={stewards} parcels={parcels} seasons={seasons} onSelect={setSelectedStewardId}
+                onEdit={setEditingSteward} onDelete={setDeletingSteward} />
             </div>
           </>
         )}
@@ -1320,6 +2345,24 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
+
+      {editingSteward && (
+        <EditFarmerDialog
+          key={editingSteward.id}
+          steward={editingSteward}
+          onClose={() => setEditingSteward(null)}
+          onSaved={() => { setEditingSteward(null); setToast('Farmer details updated'); loadDashboardData(); }}
+        />
+      )}
+
+      {deletingSteward && (
+        <DeleteFarmerDialog
+          key={deletingSteward.id}
+          steward={deletingSteward}
+          onClose={() => setDeletingSteward(null)}
+          onDeleted={() => { setToast(`${deletingSteward.full_name} removed`); setDeletingSteward(null); loadDashboardData(); }}
+        />
       )}
 
       {toast && (

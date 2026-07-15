@@ -138,6 +138,28 @@ def run():
             db.flush()
             print(f"Seeded steward: {name} ({payam})")
 
+        # One authorized_operator row for local/demo testing of chat-based
+        # registration (NEWFARMER/BOUNDARY) -- an admin action per
+        # db/schema.sql's authorized_operator migration note, not
+        # something a chat message could ever create itself. Phone
+        # number matches whatever the tester actually links from their
+        # own Telegram account via "STAFF 0920000001".
+        operator_phone = "0920000001"
+        operator = db.query(models.AuthorizedOperator).filter_by(phone_number=operator_phone).first()
+        if operator:
+            operator.full_name = "Rebecca Ajak"
+            operator.role = "digital_champion"
+            operator.is_active = True
+            print(f"Authorized operator already seeded, updated: {operator.full_name} ({operator_phone})")
+        else:
+            db.add(models.AuthorizedOperator(
+                full_name="Rebecca Ajak",
+                phone_number=operator_phone,
+                role="digital_champion",
+                added_by="Demo Seed Script",
+            ))
+            print(f"Seeded authorized operator: Rebecca Ajak ({operator_phone})")
+
         db.commit()
         print("\nSeed complete.")
     finally:

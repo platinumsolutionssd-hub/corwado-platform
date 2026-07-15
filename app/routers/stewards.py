@@ -13,11 +13,13 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.services.steward_registration import create_steward
 
 router = APIRouter()
 
@@ -39,6 +41,26 @@ class StewardIn(BaseModel):
     registered_offline: bool = False
 
 
+class StewardUpdate(BaseModel):
+    """
+    Partial update for the "edit farmer" dashboard action -- every field
+    optional, and only the ones the caller actually sets are touched
+    (model_dump(exclude_unset=True) below), so a PATCH that only sends
+    `gender` can't accidentally null out phone_number etc.
+    """
+    role: Optional[str] = None
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    preferred_language: Optional[str] = None
+    preferred_channel: Optional[str] = None
+    gender: Optional[str] = None
+    is_youth: Optional[bool] = None
+    has_disability: Optional[bool] = None
+    disability_notes: Optional[str] = None
+    cooperative_id: Optional[str] = None
+
+
 class StewardOut(StewardIn):
     created_at: datetime
     synced_at: Optional[datetime] = None
@@ -52,18 +74,29 @@ class StewardOut(StewardIn):
 
 
 @router.post("", response_model=StewardOut)
-def register_steward(steward: StewardIn, db: Session = Depends(get_db)):
-    """Single, online registration — sets synced_at immediately."""
-    data = steward.model_dump()
-    row_id = data.pop("id", None)
-    db_steward = models.LandSteward(**data)
-    if row_id:
-        db_steward.id = row_id
-    if not steward.registered_offline:
-        db_steward.synced_at = datetime.utcnow()
-    db.add(db_steward)
-    db.commit()
-    db.refresh(db_steward)
+def register_steward(steward: StewardIn, force_create: bool = False, db: Session = Depends(get_db)):
+    """
+    Single, online registration — sets synced_at immediately.
+
+    Flags (not silently ignores, not silently duplicates) an existing
+    steward with the same phone_number: without force_create=true, a
+    match returns 409 with the existing record so the caller can show
+    "already registered as X — continue anyway?" rather than either
+    refusing outright (a household can legitimately share one phone
+    across stewards) or silently creating a duplicate. See
+    app/services/steward_registration.py.
+    """
+    db_steward, duplicate = create_steward(db, steward.model_dump(), force_create=force_create)
+    if db_steward is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"A farmer with this phone number is already registered: {duplicate.full_name}.",
+                "existing_steward_id": duplicate.id,
+                "existing_full_name": duplicate.full_name,
+                "existing_created_at": duplicate.created_at.isoformat(),
+            },
+        )
     return db_steward
 
 
@@ -119,3 +152,45 @@ def get_steward(steward_id: str, db: Session = Depends(get_db)):
     if not steward:
         raise HTTPException(status_code=404, detail="Steward not found")
     return steward
+
+
+@router.patch("/{steward_id}", response_model=StewardOut)
+def update_steward(steward_id: str, update: StewardUpdate, db: Session = Depends(get_db)):
+    """Edits an existing farmer's profile fields -- the dashboard's "Edit" action."""
+    steward = db.query(models.LandSteward).filter_by(id=steward_id).first()
+    if not steward:
+        raise HTTPException(status_code=404, detail="Steward not found")
+    for field, value in update.model_dump(exclude_unset=True).items():
+        setattr(steward, field, value)
+    db.commit()
+    db.refresh(steward)
+    return steward
+
+
+@router.delete("/{steward_id}", status_code=204)
+def delete_steward(steward_id: str, db: Session = Depends(get_db)):
+    """
+    Removes a farmer -- the dashboard's "Delete" action. No table in
+    db/schema.sql declares ON DELETE CASCADE from parcel, message_dispatch,
+    etc. back to land_steward, so deleting a steward who already has real
+    data attached (a mapped parcel, dispatch history, ...) is correctly
+    rejected by Postgres's own foreign-key constraint rather than silently
+    orphaning or cascading through records this endpoint was never asked
+    to touch -- that's surfaced here as a 409 telling the caller what's
+    still attached, not a 500.
+    """
+    steward = db.query(models.LandSteward).filter_by(id=steward_id).first()
+    if not steward:
+        raise HTTPException(status_code=404, detail="Steward not found")
+    try:
+        db.delete(steward)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Cannot delete this farmer: they still have parcels, seasons, "
+                "or dispatch history linked to their record. Remove those first."
+            ),
+        )

@@ -1,0 +1,57 @@
+﻿TRANSLATION SHEET - CORWADO TELEGRAM BOT MESSAGES (ENGLISH TO JUBA ARABIC)
+
+"Hello Philip, thank you for helping with this! Here is how this sheet works:"
+
+"1. Please fill in the LAST column, ""juba_arabic_translation"", with the Juba Arabic version of each message in the ""english_text"" column."
+"2. Spelling: Juba Arabic does not have one official/standard spelling, so please do not worry about ""correct"" spelling. Just write it the way it sounds when spoken, using the same English letters (A, B, C...) that this sheet is written in."
+"3. Some messages have a word inside curly braces, like {name} or {crop} or {price}. These are placeholders -- the computer automatically swaps them for real information (a real name, a real crop, a real price, etc.) before the message is sent. You must copy these words EXACTLY as they appear, curly braces and all, into your translation -- do NOT translate the word inside the braces itself. The ""placeholder_note"" column explains what each one means in plain language."
+"4. Some messages also contain command words in capital letters, like REGISTER, BOUNDARY, YES, NO, STAFF, PRICE, SKIP, DONE. These are words the farmer has to type back to the bot exactly as shown, so please leave these capitalized English words as they are too -- do not translate them."
+"5. If a message doesn't translate naturally into Juba Arabic, or you're simply not sure about one, that is totally fine -- just leave that row's last column blank and move on to the next one. No pressure to force a translation."
+"6. Please don't change the ""key"" column (first column) or reorder the rows -- that column is just an internal label so the message can be matched back up in the system later. You don't need to do anything with it."
+"7. When you're done, please save/send the file back in the same format (Excel or CSV is fine)."
+Thank you very much for your help with this!
+
+
+key,english_text,placeholder_note,juba_arabic_translation
+menu_text,"1. Link my phone number
+2. Check today's price
+3. Check my registration status
+Reply with a number.",No placeholders. Keep the numbered list format (1. 2. 3.) and each item on its own line if you can.,
+staff_auth_required,"This action requires CORWADO staff authorization. Send STAFF <phone number> to link your account, or contact your program coordinator.","No placeholders. ""STAFF <phone number>"" is a command word the farmer must type in -- keep the word STAFF in English/capitals exactly as shown, just translate the surrounding sentence.",
+gender_menu,"Gender? 1=female 2=male 3=other 4=prefer not to say (numbers or words both work, or reply SKIP)",No placeholders. The word SKIP is a command word people can type -- keep it in English/capitals exactly as shown.,
+gender_not_recognized,Didn't recognize that. {menu},"{menu} will be replaced with another message automatically (a short menu of choices) -- leave the word {menu} exactly as-is, just write the surrounding sentence in Juba Arabic.",
+register_usage,Usage: REGISTER <phone number>,No placeholders. REGISTER is a command word people must type in -- keep it in English/capitals exactly as shown.,
+register_not_found,No registration found for that phone number. Ask your Digital Champion to register you first.,No placeholders.,
+register_phone_linked_elsewhere,This phone is already linked to a different Telegram account — contact your Digital Champion.,No placeholders.,
+register_chat_linked_elsewhere,This Telegram account is already linked to a different farmer record ({name}) — contact your Digital Champion if this phone number should be linked instead.,"{name} will be replaced with the person's actual name -- leave the word {name} exactly as-is in your translation, just write the surrounding sentence in Juba Arabic.",
+register_linked,Linked. You're registered as {name}. Reply BOUNDARY to trace your farm now.,"{name} will be replaced with the person's actual name -- leave the word {name} exactly as-is in your translation, just write the surrounding sentence in Juba Arabic. Also keep the word BOUNDARY in English/capitals exactly as shown -- it's a command word people type in.",
+register_phone_prompt,Send your phone number.,No placeholders.,
+staff_usage,Usage: STAFF <phone number>,No placeholders. STAFF is a command word people must type in -- keep it in English/capitals exactly as shown.,
+staff_not_found,No staff authorization found for that phone number. Contact your program coordinator.,No placeholders.,
+staff_suspended,Your access has been suspended. Contact your program coordinator.,No placeholders.,
+staff_phone_linked_elsewhere,This phone is already linked to a different Telegram account — contact your program coordinator.,No placeholders.,
+staff_linked,Linked. You're authorized as CORWADO staff: {name}.,"{name} will be replaced with the person's actual name -- leave the word {name} exactly as-is in your translation, just write the surrounding sentence in Juba Arabic.",
+price_usage,Usage: PRICE <crop>,No placeholders. PRICE is a command word people must type in -- keep it in English/capitals exactly as shown.,
+price_crop_not_tracked,No crop named '{crop}' is tracked.,"{crop} will be replaced with the actual crop name (e.g. maize, sorghum) -- leave the word {crop} exactly as-is, just write the surrounding sentence in Juba Arabic.",
+price_no_price_yet,No price recorded yet for {crop}.,"{crop} will be replaced with the actual crop name -- leave the word {crop} exactly as-is, just write the surrounding sentence in Juba Arabic.",
+price_result,{crop}: {price} SSP/{unit} at {location} (recorded {date}),"This one has several placeholders: {crop} = crop name, {price} = the price number, {unit} = the unit it's sold by (e.g. kg, bag), {location} = market location, {date} = the date it was recorded. Leave all of these words exactly as-is (including the curly braces) and just translate the fixed words around them, like ""at"" and ""recorded"".",
+status_unregistered,You're not registered yet. Send REGISTER <phone> to link your account.,No placeholders. REGISTER is a command word people must type in -- keep it in English/capitals exactly as shown.,
+status_registered,"{name} — registered, linked via Telegram. Cooperative: {coop}.","{name} will be replaced with the person's actual name, and {coop} will be replaced with their cooperative's name -- leave both words exactly as-is, just translate the surrounding text.",
+crop_menu_header,Which crop?,No placeholders.,
+crop_not_recognized,Didn't recognize that crop. {menu},"{menu} will be replaced with another message automatically (a short menu of choices) -- leave the word {menu} exactly as-is, just write the surrounding sentence in Juba Arabic.",
+boundary_no_farmer_found,No farmer found with phone number {phone}.,"{phone} will be replaced with the actual phone number that was typed in -- leave the word {phone} exactly as-is, just write the surrounding sentence in Juba Arabic.",
+boundary_usage,Usage: BOUNDARY <farmer phone number>,No placeholders. BOUNDARY is a command word people must type in -- keep it in English/capitals exactly as shown.,
+boundary_link,"Open this link to trace {name}'s farm boundary (expires in {minutes} minutes):
+{link}","{name} will be replaced with the farmer's name, {minutes} with a number of minutes, and {link} with a real web link -- leave all three words exactly as-is (including curly braces), just translate the surrounding sentence. Please also keep the link on its own line at the end, same as in the English version.",
+boundary_self_link,"Open this link to trace your farm boundary (expires in {minutes} minutes):
+{link}","{minutes} will be replaced with a number of minutes, and {link} with a real web link -- leave both words exactly as-is (including curly braces), just translate the surrounding sentence. Please also keep the link on its own line at the end, same as in the English version.",
+boundary_self_existing_confirm,"You already have a farm boundary on file ({acres} acres). Reply YES to add another, or NO to cancel.",{acres} will be replaced with a number (how many acres). Leave the word {acres} exactly as-is. Also keep the words YES and NO in English/capitals exactly as shown -- they're the exact words people must type back to reply.,
+boundary_self_existing_confirm_retry,"Reply YES to add another, or NO to cancel.",No placeholders. Keep the words YES and NO in English/capitals exactly as shown -- they're the exact words people must type back to reply.,
+boundary_self_cancelled,Cancelled — no changes made.,No placeholders.,
+new_farmer_name_prompt,Full name of the farmer?,No placeholders.,
+new_farmer_phone_prompt,Farmer's phone number?,No placeholders.,
+new_farmer_phone_usage,"Usage: send a phone number, e.g. 0912345678",No placeholders. The example phone number (0912345678) is just a sample and can stay as digits -- no need to translate numbers.,
+new_farmer_dup_confirm,"A farmer named {name} is already registered with that number. Reply YES to create a new record anyway (e.g. two people share a phone), or NO to cancel.","{name} will be replaced with the person's actual name -- leave the word {name} exactly as-is in your translation, just write the surrounding sentence in Juba Arabic. Also keep the words YES and NO in English/capitals exactly as shown -- they're the exact words people must type back to reply.",
+new_farmer_dup_confirm_retry,"Reply YES to create anyway, or NO to cancel.",No placeholders. Keep the words YES and NO in English/capitals exactly as shown -- they're the exact words people must type back to reply.,
+new_farmer_cancelled,Cancelled — no farmer created.,No placeholders.,
+new_farmer_created,"Created: {name}. Reply BOUNDARY to trace their farm now, or DONE to finish.","{name} will be replaced with the person's actual name -- leave the word {name} exactly as-is in your translation, just write the surrounding sentence in Juba Arabic. Also keep the words BOUNDARY and DONE in English/capitals exactly as shown -- they're command words people type in.",

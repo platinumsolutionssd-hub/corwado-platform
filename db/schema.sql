@@ -335,3 +335,257 @@ CREATE TABLE parcel_diagnostic (
     computed_at  TIMESTAMPTZ,
     refresh_due  TIMESTAMPTZ
 );
+
+-- ---------------------------------------------------------------------
+-- Migration: Bill of Quantities (input_requirement) + financing ledger
+-- (input_financing_record), scoped per planting cycle via
+-- season_planting (already existed in this file but had no writer yet
+-- — nothing created a row until this migration's season CRUD).
+--
+-- Explicitly a transparent record-keeping tool, NOT a creditworthiness
+-- or eligibility signal — same firewall this project enforces
+-- everywhere else (CORWADO never assesses the person, only records
+-- facts). Nothing here computes a score, a recommendation, or an
+-- approve/decline verdict.
+--
+-- All costs stored in USD (CORWADO's own currency, per the existing
+-- financial proposal). agri-venture-v2's economics.json (the one real
+-- cost dataset that exists, for maize) is priced in KES -- confirmed by
+-- reading the file directly, not assumed. Converting KES-sourced figures
+-- to USD without a real, dated, cited rate would be inventing a number
+-- wearing a real-data costume, so every conversion carries its own
+-- fx_rate_used/fx_rate_date/fx_rate_source alongside the original
+-- currency and amount -- the conversion is auditable and correctable
+-- later, never silently baked in.
+-- ---------------------------------------------------------------------
+CREATE TYPE input_category AS ENUM ('seed', 'fertilizer', 'pesticide', 'labour', 'other');
+CREATE TYPE financier_type AS ENUM ('farmer', 'corwado', 'financial_institution', 'government', 'ngo');
+
+CREATE TABLE input_requirement (
+    id                        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    season_planting_id        UUID NOT NULL REFERENCES season_planting(id),
+    item_name                 TEXT NOT NULL,
+    category                  input_category NOT NULL,
+    quantity                  NUMERIC NOT NULL,
+    unit                      TEXT NOT NULL,
+    unit_cost_usd             NUMERIC NOT NULL,
+    -- GENERATED, same pattern as parcel.area_acres above -- can never
+    -- drift out of sync with quantity/unit_cost_usd.
+    total_cost_usd            NUMERIC GENERATED ALWAYS AS (quantity * unit_cost_usd) STORED,
+    currency                  TEXT NOT NULL DEFAULT 'USD',
+
+    -- Where THIS line item's cost actually came from -- the Scientific
+    -- Evidence Rule applied to a cost figure instead of a suitability
+    -- factor.
+    cost_source               TEXT NOT NULL,   -- e.g. 'agriventure_kalro_baseline' | 'corwado_override' | 'farmer_reported'
+    baseline_unit_cost_usd    NUMERIC,          -- the original agri-venture-v2 (or first-recorded) figure, preserved even after an override
+    source_currency_original  TEXT,             -- e.g. 'KES'; NULL if the source was already USD
+    source_amount_original    NUMERIC,          -- the pre-conversion figure in source_currency_original
+    fx_rate_used              NUMERIC,          -- e.g. 129.19 (units of source_currency_original per 1 USD)
+    fx_rate_date              DATE,             -- the date that rate was published/valid for
+    fx_rate_source            TEXT,             -- citation, e.g. "Wise mid-market rate, https://wise.com/..., retrieved 2026-07-12"
+
+    -- Override provenance -- never a silent replacement (see
+    -- baseline_unit_cost_usd above, which this never overwrites).
+    override_reason           TEXT,
+    override_by               TEXT,
+    override_at               TIMESTAMPTZ,
+
+    created_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Linked to individual input_requirement rows, NOT the BoQ as a whole:
+-- the point of this ledger is comparing external support to what the
+-- farmer actually buys, and that comparison only means something at
+-- line-item resolution ("CORWADO funded fertilizer, farmer paid for
+-- seed") -- an aggregate "someone funded $340 of $500" loses exactly the
+-- distinction this feature exists to make. Plain FK with no uniqueness
+-- constraint -- multiple rows may reference the same input_requirement,
+-- which is how partial/split funding (e.g. 60% CORWADO + 40% farmer on
+-- one line item) falls out of this schema for free, with no special-case
+-- modeling.
+CREATE TABLE input_financing_record (
+    id                     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    input_requirement_id   UUID NOT NULL REFERENCES input_requirement(id),
+    financier_type         financier_type NOT NULL,
+    financier_name         TEXT,             -- optional, e.g. "Equity Bank"; NULL if not tracked
+    amount_usd             NUMERIC NOT NULL,
+    currency               TEXT NOT NULL DEFAULT 'USD',
+    financed_at            DATE NOT NULL,    -- when the financing/payment actually happened
+    notes                  TEXT,
+    recorded_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------
+-- Migration: Telegram inbound handling -- the first two-way channel in
+-- this platform. Everything up to this point (message_dispatch) is
+-- outbound-tracking only; a farmer's reply needs a different table and
+-- a different identity link, not a repurposed one -- same discipline as
+-- the crop_dictionary_entry split (Day 15 migration above): two
+-- distinct jobs get two distinct homes.
+--
+-- telegram_chat_id lives directly on land_steward, not a separate
+-- linking table -- it's the same shape as phone_number/whatsapp_number
+-- above (one identifier, one steward, 1:1). A join table would only
+-- earn its keep if a steward could plausibly hold multiple Telegram
+-- accounts, which isn't a real scenario here. UNIQUE (not just
+-- indexed): two stewards must never resolve to the same chat_id, since
+-- that chat_id is the only way an inbound message gets attributed back
+-- to a real person.
+-- ---------------------------------------------------------------------
+ALTER TABLE land_steward
+    ADD COLUMN telegram_chat_id TEXT UNIQUE;
+
+CREATE INDEX idx_land_steward_telegram_chat ON land_steward(telegram_chat_id);
+
+-- inbound_message: deliberately separate from message_dispatch (outbound
+-- only, see Section 6 above). steward_id is nullable until a REGISTER
+-- command links the chat_id to a real land_steward row; external_chat_id
+-- is kept regardless, so an unlinked sender's message isn't lost.
+-- channel is plain TEXT, not an ENUM like dispatch_channel -- Telegram is
+-- the only real inbound channel today, and an ENUM would need its own
+-- migration the moment a second one (e.g. inbound WhatsApp) shows up.
+CREATE TABLE inbound_message (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    steward_id        UUID REFERENCES land_steward(id),
+    channel           TEXT NOT NULL DEFAULT 'telegram',
+    external_chat_id  TEXT NOT NULL,
+    raw_text          TEXT NOT NULL,
+    parsed_intent     TEXT,       -- 'register' | 'price_lookup' | 'status_check' | 'unrecognized'
+    parsed_params     JSONB,      -- e.g. {"crop": "maize"} for price_lookup
+    response_text     TEXT,       -- what the bot actually replied -- audit trail
+    received_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at      TIMESTAMPTZ
+);
+
+CREATE INDEX idx_inbound_message_steward ON inbound_message(steward_id);
+CREATE INDEX idx_inbound_message_chat ON inbound_message(external_chat_id);
+
+-- ---------------------------------------------------------------------
+-- Migration: 'telegram' as a real outbound channel -- the first channel
+-- to move dispatch_to_steward() past "queued" (logged only) to an
+-- actual send. Two places name the allowed channel set, both need it:
+-- dispatch_channel (message_dispatch.channel) and land_steward's
+-- preferred_channel CHECK constraint. The latter was assumed to be
+-- unconstrained free text going into this migration -- it isn't; it's
+-- CHECK-restricted to the original six values, so 'telegram' would have
+-- been silently rejected by Postgres without this.
+-- ---------------------------------------------------------------------
+ALTER TYPE dispatch_channel ADD VALUE 'telegram';
+
+ALTER TABLE land_steward
+    DROP CONSTRAINT land_steward_preferred_channel_check,
+    ADD CONSTRAINT land_steward_preferred_channel_check
+        CHECK (preferred_channel IN ('sms','ussd','ivr','whatsapp','radio','in_person','telegram'));
+
+-- delivery_note: nowhere to record *why* a dispatch fell back or
+-- failed until now -- every prior channel only ever logged the routing
+-- decision (see message_dispatch's original comment), so a bare
+-- delivery_status was enough. Telegram's real send needs somewhere to
+-- put "no linked telegram_chat_id, fell back to queued" or the actual
+-- Telegram API failure reason. NULL for every dispatch that doesn't
+-- need one -- every non-Telegram channel, and every successful send.
+ALTER TABLE message_dispatch
+    ADD COLUMN delivery_note TEXT;
+
+-- ---------------------------------------------------------------------
+-- Migration: numbered-menu state for the Telegram bot (USSD-style
+-- REGISTER/PRICE/STATUS menu, replacing free-text-only commands).
+-- REGISTER and PRICE both need a follow-up message (a phone number, a
+-- crop choice) before they can resolve -- a single 'awaiting' field per
+-- chat is enough to track that one pending question; this is not a
+-- session or conversation-tree table.
+--
+-- Deliberately its own table, NOT a column on land_steward: REGISTER has
+-- to work before any land_steward row is linked to this chat_id (that
+-- link is the whole point of REGISTER), so the pending-question state
+-- can't live on a table row that doesn't exist yet for an unlinked chat.
+-- Same reasoning already used for inbound_message/telegram_chat_id above
+-- -- external_chat_id is the identity that's always available; steward
+-- linkage is a fact that may or may not exist yet.
+--
+-- One row per chat, upserted in place (not inserted per-question) --
+-- awaiting is nulled out once the follow-up is answered or cancelled,
+-- the row itself persists.
+-- ---------------------------------------------------------------------
+CREATE TABLE telegram_conversation_state (
+    chat_id     TEXT PRIMARY KEY,
+    awaiting    TEXT,       -- 'phone_for_register' | 'crop_for_price' | NULL
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------
+-- Migration: chat-based registration for CORWADO staff / Digital
+-- Champions -- lets an authorized operator create a new land_steward
+-- and register a farm boundary on someone's behalf via Telegram, not
+-- just link their own existing record (the REGISTER flow above).
+--
+-- authorized_operator is a SEPARATE table from land_steward, not a role
+-- flag on it -- the two ideas are genuinely different facts (a person
+-- CORWADO trusts to act on others' records vs. a farmer's own profile)
+-- and a person can plausibly be both (a Digital Champion who is also a
+-- registered farmer), so collapsing them into one row with a role flag
+-- would make that dual case awkward to represent.
+--
+-- Populated ONLY by an admin action (POST /api/authorized-operators) --
+-- never by a chat message. telegram_chat_id starts NULL and is filled
+-- in by the operator sending "STAFF <phone>" to the bot, same linking
+-- pattern as land_steward.telegram_chat_id/REGISTER above (see that
+-- migration's note) -- the phone number has to already be on this table
+-- for the link to succeed, so self-registration still isn't possible.
+--
+-- is_active, not a DELETE: revoking access needs to stay an auditable
+-- fact ("X was authorized, then revoked on date Y"), same reasoning as
+-- registered_offline being permanent on land_steward -- never silently
+-- erased by turning access off.
+--
+-- role is descriptive/reporting metadata only (M&E: how many Digital
+-- Champions vs. CORWADO staff are using this) -- it does NOT gate
+-- either capability differently. Both NEWFARMER (creating a new
+-- land_steward) and BOUNDARY (registering/editing a boundary on
+-- someone's behalf) check the exact same thing: an active row here
+-- linked to the sending chat_id. One gate, two capabilities -- not two
+-- separate authorization systems.
+-- ---------------------------------------------------------------------
+CREATE TABLE authorized_operator (
+    id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    full_name         TEXT NOT NULL,
+    phone_number      TEXT NOT NULL UNIQUE,
+    role              TEXT CHECK (role IN ('corwado_staff', 'digital_champion')),
+    telegram_chat_id  TEXT UNIQUE,
+    added_by          TEXT NOT NULL,   -- admin who authorized this person -- audit trail
+    is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_authorized_operator_chat ON authorized_operator(telegram_chat_id);
+
+-- context: NEWFARMER is a multi-step form (name -> phone -> gender)
+-- collected across several inbound messages, unlike REGISTER/PRICE
+-- which each resolve from a single follow-up reply. The existing
+-- `awaiting` column only tracks WHAT question is pending, not the
+-- answers already collected -- this holds those, same JSONB-scratch-
+-- space idiom already used by inbound_message.parsed_params. Cleared
+-- alongside `awaiting` on cancel or once the form completes.
+ALTER TABLE telegram_conversation_state
+    ADD COLUMN context JSONB NOT NULL DEFAULT '{}';
+
+-- parcel_draw_token: the single-use, time-limited credential that lets
+-- the public draw-boundary web page (no dashboard login exists anywhere
+-- in this project) accept one boundary submission for one specific
+-- steward. Minted by the BOUNDARY chat command (secrets.token_urlsafe --
+-- unguessable, not just unique, since it carries the entire
+-- authorization for that page). used_at is set atomically with the
+-- parcel insert it authorizes (same transaction, see
+-- app/routers/parcels.py) so a token can never be replayed even under a
+-- race between two concurrent submissions.
+CREATE TABLE parcel_draw_token (
+    token                 TEXT PRIMARY KEY,
+    steward_id            UUID NOT NULL REFERENCES land_steward(id),
+    originating_chat_id   TEXT NOT NULL,   -- where the real save confirmation gets pushed back to
+    expires_at            TIMESTAMPTZ NOT NULL,
+    used_at               TIMESTAMPTZ,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_parcel_draw_token_steward ON parcel_draw_token(steward_id);

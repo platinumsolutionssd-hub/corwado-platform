@@ -161,6 +161,70 @@ uvicorn app.main:app --reload
 Visit `http://localhost:8000/docs` for interactive API docs (auto-generated
 by FastAPI/Swagger).
 
+### External dependency: agri-venture-v2 (required for advisory/suitability)
+
+`BiophysicalEngine` (see `app/routers/advisory.py`) calls out to a separate
+sibling project, `agri-venture-v2`, over HTTP for real crop-suitability
+scoring (`AGRIVENTURE_API_URL`, default `http://localhost:8000`) — this is
+why the CORWADO backend itself is normally run on **port 8001** instead of
+FastAPI's default 8000, to avoid colliding with it. Any farmer-facing
+suitability/baseline check (`GET /api/advisory/parcel/{parcel_id}/baseline`
+and friends) will fail with `agri-venture-v2 unreachable at
+http://localhost:8000/...` until that service is also running.
+
+To start it (from the `agri-venture-v2/backend/` directory, a separate repo
+on disk, not part of this one):
+
+```bash
+python -m uvicorn server:app --reload --port 8000
+```
+
+It calls Google Earth Engine directly for real climate/soil observations, so
+it needs `ee.Authenticate()` already set up locally against the GEE project
+hardcoded in its `providers/gee_fetch.py` — see that project's own
+`CLAUDE.md` for details. It also uses `--reload`, so it's subject to the
+exact same orphaned-worker restart risk described below.
+
+## Troubleshooting / known gaps
+
+**`uvicorn --reload` restarts can silently hit a stale, orphaned process
+(confirmed on this Windows dev machine, 2026-07-13).** `--reload` runs two
+processes: a supervisor (the one with `uvicorn` in its command line) and a
+worker it spawns via `multiprocessing.spawn_main` to actually run the app —
+that worker's command line has no `uvicorn` substring in it at all. Killing
+only the supervisor (e.g. `Stop-Process` on whatever PID has "uvicorn" in
+its name, or closing that terminal window) does not kill the worker: it's
+reparented, keeps holding the listening port, and keeps running with
+whatever environment variables (`TELEGRAM_BOT_TOKEN`, `DATABASE_URL`, etc.)
+it had at its *original* spawn time. Every request after that "restart"
+keeps hitting the same stale worker — changing env vars or code and
+restarting appears to do nothing, because nothing was actually restarted.
+In one debugging session this produced four stacked orphans in a row, each
+started specifically to pick up a newly-set `TELEGRAM_BOT_TOKEN`, none of
+which ever did.
+
+Fix — before starting a fresh backend, kill the *entire* process tree, not
+just the PID with "uvicorn" in it, and confirm the port is actually free
+before relaunching:
+
+```powershell
+# Kill supervisor + worker together (taskkill /T recurses to children)
+taskkill /PID <supervisor_pid> /T /F
+
+# Confirm nothing is still bound to the port before restarting
+Get-NetTCPConnection -LocalPort 8001 -ErrorAction SilentlyContinue
+```
+
+If that still shows an owner, find it directly rather than guessing by
+command-line substring — the orphaned worker's `CommandLine` looks like
+`python.exe "-c" "from multiprocessing.spawn import spawn_main; ..."
+"--multiprocessing-fork"`, with no mention of uvicorn:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Select-Object ProcessId,ParentProcessId,CommandLine
+```
+
 ## Note on this sandbox
 
 This code was written in an environment with no internet/database access,
