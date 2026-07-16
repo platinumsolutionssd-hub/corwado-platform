@@ -501,7 +501,34 @@ def _handle_new_farmer_gender(db: Session, raw_text: str, context: dict, operato
 # let NEWFARMER do.
 # ----------------------------------------------------------------------- #
 
-def _handle_onboard_name(raw_text: str, context: dict):
+def _handle_onboard_name(db: Session, chat_id: str, raw_text: str, context: dict, lang: str):
+    """
+    Reserved-command check added 2026-07-16: onboard_welcome (the prompt
+    right before this state) is shown to every unrecognized first
+    contact, including a RETURNING user whose actual first message
+    wasn't the word REGISTER -- the menu/welcome text itself is what
+    tells them to send REGISTER, and until now nothing here
+    distinguished that reply from a genuine name. Confirmed live in the
+    database as junk land_steward rows literally named "Register" and
+    "Newfarmer" (self-registered via this exact path, not a per-channel
+    bug -- see this function's only caller, handle_update, which is
+    channel-agnostic itself; there is no separate SMS copy of this in
+    the codebase to have produced a second, independent report).
+
+    REGISTER (bare, or with a phone number) re-enters the real
+    registered-user lookup (_handle_register) instead of being stored
+    as a name. Any other recognized command word (NEWFARMER, STAFF,
+    PRICE, STATUS, BOUNDARY, DONE) cancels onboarding and falls back to
+    the menu, same as the existing MENU/0 escape hatch elsewhere in
+    handle_update -- neither is ever accepted as literal name text.
+    """
+    command, args = _split_command(raw_text)
+    if command == "REGISTER":
+        _, _, reply = _handle_register(db, chat_id, args, lang)
+        return None, None, reply
+    if command:
+        return None, None, get_string("menu_text", lang)
+
     name = raw_text.strip()
     if not name:
         return None, "onboard_name", get_string("onboard_name_prompt")
@@ -951,9 +978,10 @@ def handle_update(db: Session, update: dict) -> str:
         state.awaiting = next_awaiting
         intent, params = "new_farmer_step", {"step": "dup_confirm"}
     elif state.awaiting == "onboard_name":
-        new_context, next_awaiting, reply = _handle_onboard_name(raw_text, context)
+        new_context, next_awaiting, reply = _handle_onboard_name(db, chat_id, raw_text, context, lang)
         state.context = new_context if new_context is not None else {}
         state.awaiting = next_awaiting
+        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: REGISTER may have just linked it
         intent, params = "onboard_step", {"step": "name"}
     elif state.awaiting == "onboard_phone":
         new_context, next_awaiting, reply = _handle_onboard_phone(db, chat_id, raw_text, context)
