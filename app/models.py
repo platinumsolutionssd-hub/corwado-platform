@@ -124,6 +124,14 @@ class Parcel(Base):
     # value back instead.
     area_acres = Column(Numeric, server_default=FetchedValue())
 
+    # Large-parcel confirmation guardrail (see db/schema.sql migration
+    # note and app/routers/parcels.py's LARGE_PARCEL_THRESHOLD_HA) --
+    # area_flagged_large records whether THIS submission crossed the
+    # plausibility threshold; area_confirmed_at, when a human explicitly
+    # confirmed it was correct. Neither touches area_acres itself.
+    area_flagged_large = Column(Boolean, nullable=False, default=False)
+    area_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+
     elevation_m = Column(Numeric)
 
     soil_type = Column(Text)
@@ -461,6 +469,20 @@ class ParcelDrawToken(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    # Holds a drawn boundary that crossed the large-parcel plausibility
+    # threshold while it awaits a YES/NO reply in the originating
+    # Telegram chat -- see db/schema.sql migration note and
+    # app/services/telegram_inbound.py's boundary_large_area_confirm
+    # state. NULL for every token that never triggered the guardrail.
+    # none_as_null=True: SQLAlchemy's JSONB default treats an assigned
+    # Python None as the JSON value 'null', not SQL NULL -- confirmed
+    # live 2026-07-16 testing the confirm/redraw handlers, where
+    # `token_row.pending_geojson = None` (clearing it after YES/NO) left
+    # a real 'null'::jsonb in the column instead of SQL NULL. Invisible
+    # to the ORM (both deserialize back to Python None) but wrong for
+    # any direct SQL query checking "was this ever flagged" -- this
+    # column exists specifically to be auditable.
+    pending_geojson = Column(JSONB(none_as_null=True), nullable=True)
 
 
 class MessageDispatch(Base):

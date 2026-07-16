@@ -589,3 +589,43 @@ CREATE TABLE parcel_draw_token (
 );
 
 CREATE INDEX idx_parcel_draw_token_steward ON parcel_draw_token(steward_id);
+
+-- ---------------------------------------------------------------------
+-- Migration: large-parcel confirmation guardrail (2026-07-16) -- three
+-- self-onboarded farmers (PHILIP PITIA/PITIA2) and one test record
+-- produced boundaries spanning 1.3-4.3 km per side (hundreds to
+-- thousands of acres). Investigation confirmed this is NOT a
+-- calculation bug: independently recomputing area from the raw
+-- ST_AsGeoJSON coordinates (shapely + a local tangent-plane shoelace
+-- calc, deliberately NOT reusing PostGIS's own method) agreed with the
+-- stored area_acres to within 0.42% for all four -- a uniform,
+-- expected artifact of the flat-earth approximation vs. WGS84-spheroid
+-- geodesic math, not noise. The geometry really was drawn that large,
+-- almost certainly from tracing on a zoomed-out Leaflet map on a phone
+-- screen. See app/routers/parcels.py's LARGE_PARCEL_THRESHOLD_HA note
+-- for the guardrail itself -- this is a UX/data-quality check at entry,
+-- not a fix to area_acres (left untouched, confirmed correct) and not
+-- a hard cap (a genuinely large cooperative/aggregated plot must still
+-- be registerable).
+--
+-- area_flagged_large / area_confirmed_at record whether THIS submission
+-- crossed the plausibility threshold and, if so, when a human
+-- explicitly confirmed it was correct -- surfaced on the farmer detail
+-- view (frontend/src/App.jsx's ParcelSuitabilityCard) so a large
+-- parcel's provenance is auditable, not silently indistinguishable from
+-- an unflagged one.
+-- ---------------------------------------------------------------------
+ALTER TABLE parcel ADD COLUMN area_flagged_large BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE parcel ADD COLUMN area_confirmed_at TIMESTAMPTZ;
+
+-- pending_geojson holds a drawn boundary that crossed the plausibility
+-- threshold while it awaits a YES/NO reply in the Telegram chat that
+-- generated the draw-boundary link (app/services/telegram_inbound.py's
+-- boundary_large_area_confirm state) -- the parcel row itself isn't
+-- created until that reply is YES, so the geometry has to be held
+-- somewhere in between rather than lost when the browser tab closes.
+-- NULL for every token that never triggered the guardrail (the
+-- overwhelming majority). The dashboard's own steward_id path (no
+-- token, staff physically at the browser) confirms in-page instead and
+-- never touches this column -- see ParcelIn.confirm_large_area.
+ALTER TABLE parcel_draw_token ADD COLUMN pending_geojson JSONB;

@@ -183,6 +183,26 @@ STRINGS = {
         "en": "Cancelled — no changes made.",
         "jba": None,
     },
+    "boundary_large_area_confirm": {
+        "en": "The boundary just drawn for {name} covers about {ha} hectares — much larger than a typical smallholder plot. Reply YES to save it anyway, or NO to redraw.",
+        "jba": None,
+    },
+    "boundary_large_area_confirm_retry": {
+        "en": "Reply YES to save it anyway, or NO to redraw.",
+        "jba": None,
+    },
+    "boundary_large_area_saved": {
+        "en": "Boundary saved for {name}: {area} (confirmed as unusually large).",
+        "jba": None,
+    },
+    "boundary_large_area_expired": {
+        "en": "That confirmation has expired — send BOUNDARY again to draw a new one.",
+        "jba": None,
+    },
+    "boundary_large_area_redraw": {
+        "en": "Let's redraw it. Open this link to trace the boundary again (expires in {minutes} minutes):\n{link}",
+        "jba": None,
+    },
 
     "new_farmer_name_prompt": {
         "en": "Full name of the farmer?",

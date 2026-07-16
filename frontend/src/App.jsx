@@ -137,29 +137,87 @@ function MapSearchControl({ mapRef }) {
 // authorizes) the steward server-side rather than trusting a client-
 // supplied id on a page with no login of its own. Dashboard callers
 // never pass this, so their behavior is unchanged.
+// A confirmation_required response (app/routers/parcels.py's
+// LARGE_PARCEL_THRESHOLD_HA guardrail) is handled differently depending
+// on how this drawing was reached: the dashboard path (no token, staff
+// physically at this browser) shows an in-page confirm prompt below and
+// re-submits with confirm_large_area=true on "save anyway"; the token
+// (Telegram hand-off) path can't confirm here at all -- the backend has
+// already stashed the geometry and pushed a YES/NO prompt to the chat
+// that generated the link, so this just hands the response up to
+// onSaved (see DrawBoundaryPage) rather than showing its own prompt.
 function ParcelDrawStep({ steward, onSaved, onSkip, token }) {
   const [points, setPoints] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [pendingConfirm, setPendingConfirm] = useState(null); // {area_ha, area_acres, threshold_ha} | null
   const { expanded, setExpanded, mapRef } = useExpandableMap();
 
   const canSave = points.length >= 3;
 
-  async function handleSave() {
+  async function submit(confirmLargeArea) {
     const ring = closeRing(points);
     if (!ring) return;
     setSaving(true);
     setError(null);
     try {
       const geojson = { type: 'Polygon', coordinates: [ring] };
-      const parcel = token
+      const result = token
         ? await api.registerParcelWithToken(token, geojson)
-        : await api.registerParcel(steward.id, geojson);
-      onSaved(parcel);
+        : await api.registerParcel(steward.id, geojson, confirmLargeArea);
+      if (result.confirmation_required) {
+        if (token) {
+          onSaved(result);
+        } else {
+          setPendingConfirm(result);
+          setSaving(false);
+        }
+        return;
+      }
+      setPendingConfirm(null);
+      onSaved(result);
     } catch (e) {
       setError(e.message);
       setSaving(false);
     }
+  }
+
+  function handleSave() { submit(false); }
+  function handleConfirmLargeArea() { submit(true); }
+  function handleRedraw() {
+    setPendingConfirm(null);
+    setPoints([]);
+  }
+
+  if (pendingConfirm) {
+    return (
+      <div role="alertdialog" aria-label="Confirm large boundary"
+        style={{ border: `1px solid ${COLORS.clay}55`, borderRadius: 10, padding: 16, background: '#fdf6ec' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <AlertTriangle size={20} color={COLORS.clay} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <p style={{ margin: '0 0 6px', fontWeight: 600, fontSize: 14 }}>
+              This boundary covers about {pendingConfirm.area_ha.toFixed(1)} ha ({pendingConfirm.area_acres.toFixed(1)} acres)
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: COLORS.charcoal + 'aa' }}>
+              That's much larger than a typical smallholder plot (guideline: {pendingConfirm.threshold_ha} ha) — this can happen
+              when a boundary is traced on a zoomed-out map. Save it as drawn, or redraw?
+            </p>
+          </div>
+        </div>
+        {error && <ErrorBanner message={error} />}
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={handleRedraw}
+            style={{ background: 'none', border: `1px solid ${COLORS.sage}66`, borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>
+            Redraw
+          </button>
+          <button type="button" onClick={handleConfirmLargeArea} disabled={saving}
+            style={{ background: COLORS.clay, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save anyway'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -632,6 +690,14 @@ function ParcelSuitabilityCard({ parcel }) {
         <span style={{ fontWeight: 600, fontSize: 14 }}>
           {parcel.area_acres ? `${parcel.area_acres.toFixed(2)} acres` : 'Area pending'}
         </span>
+        {parcel.area_flagged_large && (
+          <span title="This boundary crossed the large-parcel plausibility guideline at submission and was explicitly confirmed rather than auto-saved."
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: COLORS.clay, fontWeight: 600 }}>
+            <AlertTriangle size={13} aria-hidden="true" />
+            Flagged as unusually large
+            {parcel.area_confirmed_at ? ` — confirmed ${new Date(parcel.area_confirmed_at).toLocaleDateString()}` : ''}
+          </span>
+        )}
       </div>
 
       {/* Diagnose (crop-independent Stage 1 LandDiagnostic) before analyse
@@ -2003,6 +2069,11 @@ export function DrawBoundaryPage({ token }) {
   const [steward, setSteward] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [saved, setSaved] = useState(false);
+  // Set when ParcelDrawStep hands up a confirmation_required response
+  // (app/routers/parcels.py's LARGE_PARCEL_THRESHOLD_HA guardrail) --
+  // the backend has already pushed a YES/NO prompt to the Telegram chat
+  // that generated this link, nothing was saved yet.
+  const [pendingTelegramConfirm, setPendingTelegramConfirm] = useState(false);
 
   useEffect(() => {
     api.getDrawToken(token)
@@ -2048,18 +2119,29 @@ export function DrawBoundaryPage({ token }) {
           <ParcelDrawStep
             steward={steward}
             token={token}
-            onSaved={() => { setSaved(true); setStatus('done'); }}
+            onSaved={(result) => {
+              if (result && result.confirmation_required) {
+                setPendingTelegramConfirm(true);
+              } else {
+                setSaved(true);
+              }
+              setStatus('done');
+            }}
             onSkip={() => setStatus('done')}
           />
         )}
 
         {status === 'done' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', padding: '24px 0', textAlign: 'center' }}>
-            <CheckCircle2 size={28} color={COLORS.forest} aria-hidden="true" />
+            {pendingTelegramConfirm
+              ? <AlertTriangle size={28} color={COLORS.clay} aria-hidden="true" />
+              : <CheckCircle2 size={28} color={COLORS.forest} aria-hidden="true" />}
             <p style={{ margin: 0 }}>
-              {saved
-                ? 'Boundary saved — a confirmation has been sent back to the Telegram chat that generated this link.'
-                : 'No boundary saved. You can close this page.'}
+              {pendingTelegramConfirm
+                ? "This boundary is unusually large — check the Telegram chat that sent you this link to confirm (reply YES) or redraw (reply NO)."
+                : saved
+                  ? 'Boundary saved — a confirmation has been sent back to the Telegram chat that generated this link.'
+                  : 'No boundary saved. You can close this page.'}
             </p>
           </div>
         )}

@@ -51,6 +51,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
+from geoalchemy2.shape import from_shape
+from shapely.geometry import shape
 
 from app import models
 from app.services.steward_registration import create_steward, find_possible_duplicate, normalize_phone
@@ -366,6 +368,67 @@ def _handle_boundary_self_confirm(db: Session, chat_id: str, raw_text: str, lang
     return (
         "boundary_self_confirm", "boundary_self_start", {},
         get_string("boundary_self_existing_confirm_retry", lang),
+    )
+
+
+def _handle_boundary_large_area_confirm(db: Session, chat_id: str, raw_text: str, context: dict, lang: str):
+    """
+    YES/NO gate after a draw-boundary submission crossed the large-area
+    plausibility threshold (see app/routers/parcels.py's
+    LARGE_PARCEL_THRESHOLD_HA) -- same YES/NO/retry shape as
+    _handle_boundary_self_confirm above. The drawn geometry never comes
+    through as chat text: it's already stashed on the (already-spent)
+    parcel_draw_token named in context["draw_token"] by register_parcel,
+    so this only decides whether to promote that geometry to a real
+    parcel row or discard it and mint a fresh link to redraw.
+    """
+    token = context.get("draw_token")
+    token_row = db.query(models.ParcelDrawToken).filter_by(token=token).first() if token else None
+    choice = raw_text.strip().upper()
+
+    if choice == "YES":
+        if not token_row or not token_row.pending_geojson:
+            return None, "boundary_large_area_confirm", {}, get_string("boundary_large_area_expired", lang)
+        shp = shape(token_row.pending_geojson)
+        db_parcel = models.Parcel(
+            steward_id=token_row.steward_id,
+            geom=from_shape(shp, srid=4326),
+            area_flagged_large=True,
+            area_confirmed_at=datetime.now(timezone.utc),
+        )
+        db.add(db_parcel)
+        token_row.pending_geojson = None
+        # flush (not commit -- handle_update's caller commits once at the
+        # end, same one-commit-per-inbound-message idiom every other
+        # handler here follows) + refresh: area_acres is a DB-generated
+        # column (db/schema.sql), not something this INSERT can supply --
+        # refresh reads back what Postgres just computed for it, same
+        # sequencing app/routers/parcels.py's register_parcel uses.
+        db.flush()
+        db.refresh(db_parcel)
+        steward = db.query(models.LandSteward).filter_by(id=token_row.steward_id).first()
+        area = f"{db_parcel.area_acres:.2f} acres" if db_parcel.area_acres is not None else "area pending"
+        return (
+            None, "boundary_large_area_confirm", {"parcel_id": db_parcel.id},
+            get_string("boundary_large_area_saved", lang, name=steward.full_name, area=area),
+        )
+
+    if choice == "NO":
+        steward = db.query(models.LandSteward).filter_by(id=token_row.steward_id).first() if token_row else None
+        if token_row:
+            token_row.pending_geojson = None
+        if not steward:
+            return None, "boundary_large_area_confirm", {}, get_string("boundary_large_area_expired", lang)
+        new_token = _mint_draw_token(db, chat_id, steward)
+        link = f"{FRONTEND_BASE_URL}/draw-boundary?token={new_token}"
+        return (
+            None, "boundary_large_area_confirm", {"steward_id": steward.id},
+            get_string("boundary_large_area_redraw", lang, minutes=DRAW_TOKEN_EXPIRY_MINUTES, link=link),
+        )
+
+    return (
+        "boundary_large_area_confirm", "boundary_large_area_confirm", {},
+        get_string("boundary_large_area_confirm_retry", lang),
     )
 
 
@@ -928,6 +991,11 @@ def handle_update(db: Session, update: dict) -> str:
     elif state.awaiting == "boundary_self_confirm":
         next_awaiting, intent, params, reply = _handle_boundary_self_confirm(db, chat_id, raw_text, lang)
         state.awaiting = next_awaiting
+    elif state.awaiting == "boundary_large_area_confirm":
+        next_awaiting, intent, params, reply = _handle_boundary_large_area_confirm(db, chat_id, raw_text, context, lang)
+        state.awaiting = next_awaiting
+        if next_awaiting is None:
+            state.context = {}
     elif state.awaiting == "new_farmer_gender":
         operator = _get_authorized_operator(db, chat_id)
         if not operator:

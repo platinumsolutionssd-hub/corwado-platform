@@ -54,10 +54,14 @@ export const api = {
   // --- Parcels ----------------------------------------------------------
   listParcels: (stewardId) =>
     request(`/api/parcels${stewardId ? `?steward_id=${stewardId}` : ''}`),
-  registerParcel: (stewardId, geojson) =>
+  // confirmLargeArea: re-submits after the caller already saw a
+  // confirmation_required response (see ParcelDrawStep) and the user
+  // chose "save anyway" -- see app/routers/parcels.py's
+  // LARGE_PARCEL_THRESHOLD_HA guardrail.
+  registerParcel: (stewardId, geojson, confirmLargeArea = false) =>
     request('/api/parcels', {
       method: 'POST',
-      body: JSON.stringify({ steward_id: stewardId, geojson }),
+      body: JSON.stringify({ steward_id: stewardId, geojson, confirm_large_area: confirmLargeArea }),
     }),
   // Telegram BOUNDARY hand-off: same endpoint, single-use token instead
   // of steward_id -- see app/routers/parcels.py, which resolves (and
