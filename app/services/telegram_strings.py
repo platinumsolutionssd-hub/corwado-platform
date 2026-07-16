@@ -59,129 +59,129 @@ def language_code_for(preferred_language: Optional[str]) -> str:
 STRINGS = {
     "menu_text": {
         "en": "1. Link my phone number\n2. Check today's price\n3. Check my registration status\nReply with a number.",
-        "jba": None,
+        "jba": "1. Sejilu ragam telephone tai 2. Ayinu ser hajat alela 3. Ayinu marhal tesjil tayi. Juwabu be nimra.",
     },
     "staff_auth_required": {
         "en": "This action requires CORWADO staff authorization. Send STAFF <phone number> to link your account, or contact your program coordinator.",
-        "jba": None,
+        "jba": "Mahal de deiru umal ta CORWADO asan I kararu. Rasulu UMAL <phone number> asan I sejilu ragam telephone bi taki wala asalu zol musuul le barnamik",
     },
     "gender_menu": {
         "en": "Gender? 1=female 2=male 3=other 4=prefer not to say (numbers or words both work, or reply SKIP)",
-        "jba": None,
+        "jba": "Al Jinsi? 1=Mara 2=Rajil 3=Tanin 4=ma der ta wori (numbers or words both work, or reply SKIP)",
     },
     "gender_not_recognized": {
         "en": "Didn't recognize that. {menu}",
-        "jba": None,
+        "jba": "Ma akider ligo dak. {menu}",
     },
 
     "register_usage": {
         "en": "Usage: REGISTER <phone number>",
-        "jba": None,
+        "jba": "Istimal: SEJILU <phone number>",
     },
     "register_not_found": {
         "en": "No registration found for that phone number. Ask your Digital Champion to register you first.",
-        "jba": None,
+        "jba": "Mafi tesjil ta telephone ligo. Asalu DigitalChampion hagak asan I sejilak awel.",
     },
     "register_phone_linked_elsewhere": {
         "en": "This phone is already linked to a different Telegram account — contact your Digital Champion.",
-        "jba": None,
+        "jba": "Ragam telephone de sejilu be isim Telegram tani --- asalu Digital Champion bitak.",
     },
     "register_chat_linked_elsewhere": {
         "en": "This Telegram account is already linked to a different farmer record ({name}) — contact your Digital Champion if this phone number should be linked instead.",
-        "jba": None,
+        "jba": "Telegram account da sejilu be zol tani al indu mahal kuruju tou ({name}) --- asalu Digital Champion bi tak kan ragam telephone de I sejilu tani.",
     },
     "register_linked": {
         "en": "Linked. You're registered as {name}. Reply BOUNDARY to trace your farm now.",
-        "jba": None,
+        "jba": "sejilu. Sejilu inta be Isim {name}. juwabu HUDUD asan inta be ligo mahal kuruju taki.",
     },
     "register_phone_prompt": {
         "en": "Send your phone number.",
-        "jba": None,
+        "jba": "Rasulu ragam telephone bi taki.",
     },
 
     "staff_usage": {
         "en": "Usage: STAFF <phone number>",
-        "jba": None,
+        "jba": "Istimal: UMAL <phone number>",
     },
     "staff_not_found": {
         "en": "No staff authorization found for that phone number. Contact your program coordinator.",
-        "jba": None,
+        "jba": "Mafi karar asan umal bi stamil ragam telephone de. asalu zol musuul le barnamik.",
     },
     "staff_suspended": {
         "en": "Your access has been suspended. Contact your program coordinator.",
-        "jba": None,
+        "jba": "Tesjil bitak wagifu. asalu zol musuul le barnamik.",
     },
     "staff_phone_linked_elsewhere": {
         "en": "This phone is already linked to a different Telegram account — contact your program coordinator.",
-        "jba": None,
+        "jba": "Ragam Telephone de musejil be Telegram account tani--- asalu zol musuul le barnamik.",
     },
     "staff_linked": {
         "en": "Linked. You're authorized as CORWADO staff: {name}.",
-        "jba": None,
+        "jba": "sejilu. Sejilu inta ze UMAL bita CORWADO: {name}.",
     },
 
     "price_usage": {
         "en": "Usage: PRICE <crop>",
-        "jba": None,
+        "jba": "istimal: SER <crop>",
     },
     "price_crop_not_tracked": {
         "en": "No crop named '{crop}' is tracked.",
-        "jba": None,
+        "jba": "Mafi isim kudar '{crop}' ligo.",
     },
     "price_no_price_yet": {
         "en": "No price recorded yet for {crop}.",
-        "jba": None,
+        "jba": "Lisa mafi ser sejul {crop}.",
     },
     "price_result": {
         "en": "{crop}: {price} SSP/{unit} at {location} (recorded {date})",
-        "jba": None,
+        "jba": "{crop}: {price} SSP/{unit} fi {location} (recorded {date})",
     },
 
     "status_unregistered": {
         "en": "You're not registered yet. Send REGISTER <phone> to link your account.",
-        "jba": None,
+        "jba": "Lisa ma sejilu inta. Rasulu SEJILU <phone> to link your account.",
     },
     "status_registered": {
         "en": "{name} — registered, linked via Telegram. Cooperative: {coop}.",
-        "jba": None,
+        "jba": "{name} --- Sejilu, sejulu be Telegram. Jemeyiya: {coop}.",
     },
 
     "crop_menu_header": {
         "en": "Which crop?",
-        "jba": None,
+        "jba": "Yatu kudar?",
     },
     "crop_not_recognized": {
         "en": "Didn't recognize that crop. {menu}",
-        "jba": None,
+        "jba": "Ma akider ligo sikil ta kudar de. {menu}",
     },
 
     "boundary_no_farmer_found": {
         "en": "No farmer found with phone number {phone}.",
-        "jba": None,
+        "jba": "Mafi zol ta kuruju ligo be ragam telephone de {phone}.",
     },
     "boundary_usage": {
         "en": "Usage: BOUNDARY <farmer phone number>",
-        "jba": None,
+        "jba": "istimal: UDUD <farmer phone number>",
     },
     "boundary_link": {
         "en": "Open this link to trace {name}'s farm boundary (expires in {minutes} minutes):\n{link}",
-        "jba": None,
+        "jba": "Aftau link da asan inta bi ligo {name}'s hudud ta mahal zara (expires in {minutes} minutes): {link}",
     },
     "boundary_self_link": {
         "en": "Open this link to trace your farm boundary (expires in {minutes} minutes):\n{link}",
-        "jba": None,
+        "jba": "Aftau link da asan inta bi ligo udud ta mahal zara bitaki (expires in {minutes} minutes): {link}",
     },
     "boundary_self_existing_confirm": {
         "en": "You already have a farm boundary on file ({acres} acres). Reply YES to add another, or NO to cancel.",
-        "jba": None,
+        "jba": "Hasan de inta indu udud to mahal zara ({acres} acres). Juwabu NAM asan inta bi sejilu tani, wala LA asan inta bi gofulu.",
     },
     "boundary_self_existing_confirm_retry": {
         "en": "Reply YES to add another, or NO to cancel.",
-        "jba": None,
+        "jba": "Juwabu NAM asan inta bi sejilu tani, wala LA asan inta bi gofulu",
     },
     "boundary_self_cancelled": {
         "en": "Cancelled — no changes made.",
-        "jba": None,
+        "jba": "gofulu --- mafi tageerat ligo",
     },
     "boundary_large_area_confirm": {
         "en": "The boundary just drawn for {name} covers about {ha} hectares — much larger than a typical smallholder plot. Reply YES to save it anyway, or NO to redraw.",
@@ -206,31 +206,31 @@ STRINGS = {
 
     "new_farmer_name_prompt": {
         "en": "Full name of the farmer?",
-        "jba": None,
+        "jba": "Isim kamil ta zol bita kuruju?",
     },
     "new_farmer_phone_prompt": {
         "en": "Farmer's phone number?",
-        "jba": None,
+        "jba": "Ragam telephone bitazol ta kuruju?",
     },
     "new_farmer_phone_usage": {
         "en": "Usage: send a phone number, e.g. 0912345678",
-        "jba": None,
+        "jba": "istimal: rasulu ragam telephone bitaki, misal. 0912345678",
     },
     "new_farmer_dup_confirm": {
         "en": "A farmer named {name} is already registered with that number. Reply YES to create a new record anyway (e.g. two people share a phone), or NO to cancel.",
-        "jba": None,
+        "jba": "Zol bita kuruju isimu {name} sejilu kala be ragam telephone de. Juwabu NAM as inta bi akider sejilu tani jedid mumkin (e.g. two people share a phone), wala LA asan inta bi gofulu.",
     },
     "new_farmer_dup_confirm_retry": {
         "en": "Reply YES to create anyway, or NO to cancel.",
-        "jba": None,
+        "jba": "Juwabu NAM as inta bi akider sejilu tani jedid, wala LA asan inta bi gofulu.",
     },
     "new_farmer_cancelled": {
         "en": "Cancelled — no farmer created.",
-        "jba": None,
+        "jba": "gofulu --- mafi zol bita kuruju sejilu.",
     },
     "new_farmer_created": {
         "en": "Created: {name}. Reply BOUNDARY to trace their farm now, or DONE to finish.",
-        "jba": None,
+        "jba": "sejilu: {name}. juwabu UDUD asaninta bi ligo mahal kuruju bi tomon hasi de, wala INTA as kamilu.",
     },
 
     # Self-service onboarding (unregistered, unlinked chat's first

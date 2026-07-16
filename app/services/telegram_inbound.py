@@ -79,6 +79,17 @@ GENDER_CHOICES = {
     "4": "prefer_not_to_say", "prefer not to say": "prefer_not_to_say", "prefer_not_to_say": "prefer_not_to_say",
 }
 
+# YES/NO reply matching for the two confirm gates whose prompt strings
+# are now translated (boundary_self_existing_confirm, new_farmer_dup_confirm
+# -- see telegram_strings.py) -- NAM/LA are Philip Pitia's verified Juba
+# Arabic equivalents, matched case-insensitively same as English. SKIP
+# has no confirmed Juba equivalent in the translated strings (gender_menu
+# itself still says "reply SKIP" verbatim), so SKIP handling elsewhere in
+# this module stays English-only for now, same reasoning as DONE staying
+# English-only in COMMAND_ALIASES above.
+YES_WORDS = {"YES", "NAM"}
+NO_WORDS = {"NO", "LA"}
+
 
 def _find_steward_by_chat(db: Session, chat_id: str):
     return db.query(models.LandSteward).filter_by(telegram_chat_id=chat_id).first()
@@ -357,13 +368,13 @@ def _handle_boundary_self_confirm(db: Session, chat_id: str, raw_text: str, lang
     else in this module.
     """
     choice = raw_text.strip().upper()
-    if choice == "YES":
+    if choice in YES_WORDS:
         steward = _find_steward_by_chat(db, chat_id)
         token = _mint_draw_token(db, chat_id, steward)
         link = f"{FRONTEND_BASE_URL}/draw-boundary?token={token}"
         reply = get_string("boundary_self_link", lang, minutes=DRAW_TOKEN_EXPIRY_MINUTES, link=link)
         return None, "boundary_start", {"steward_id": steward.id}, reply
-    if choice == "NO":
+    if choice in NO_WORDS:
         return None, "boundary_self_start", {}, get_string("boundary_self_cancelled", lang)
     return (
         "boundary_self_confirm", "boundary_self_start", {},
@@ -456,9 +467,9 @@ def _handle_new_farmer_phone(db: Session, raw_text: str, context: dict):
 
 def _handle_new_farmer_dup_confirm(raw_text: str, context: dict):
     choice = raw_text.strip().upper()
-    if choice == "YES":
+    if choice in YES_WORDS:
         return context, "new_farmer_gender", get_string("gender_menu")
-    if choice == "NO":
+    if choice in NO_WORDS:
         return None, None, get_string("new_farmer_cancelled")
     return context, "new_farmer_dup_confirm", get_string("new_farmer_dup_confirm_retry")
 
@@ -878,13 +889,24 @@ def _handle_boq_summary(db: Session, steward, lang: str = DEFAULT_LANGUAGE):
 # to the menu. Structured as a dict of alias lists (not just a NEWFARMER
 # special case) so the same fix applies uniformly and any future
 # multi-word alias is a one-line addition, not a new code path.
+#
+# Juba Arabic aliases added 2026-07-16 alongside the jba translations in
+# telegram_strings.py (Philip Pitia, manually verified): REGISTER/SEJILU,
+# STAFF/UMAL, PRICE/SER, BOUNDARY/HUDUD/UDUD -- BOUNDARY gets both
+# spellings because Philip's own translated strings use both ("HUDUD" in
+# register_linked, "UDUD" in boundary_usage/boundary_self_link/etc.), so
+# a farmer replying with whichever one they just read must both work.
+# STATUS, NEWFARMER, and DONE have no confirmed Juba equivalent (DONE's
+# likely candidate, "INTA", was rejected -- see new_farmer_created's
+# translation, "inta" there reads as "you" rather than "done"/finish, an
+# unconfirmed slip, not a real synonym) so they stay English-only.
 COMMAND_ALIASES = {
-    "REGISTER": [("register",)],
-    "PRICE": [("price",)],
+    "REGISTER": [("register",), ("sejilu",)],
+    "PRICE": [("price",), ("ser",)],
     "STATUS": [("status",)],
-    "STAFF": [("staff",)],
+    "STAFF": [("staff",), ("umal",)],
     "NEWFARMER": [("newfarmer",), ("new", "farmer")],
-    "BOUNDARY": [("boundary",)],
+    "BOUNDARY": [("boundary",), ("hudud",), ("udud",)],
     "DONE": [("done",)],
 }
 
