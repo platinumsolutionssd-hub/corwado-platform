@@ -21,14 +21,25 @@ from app import models
 # crop_dictionary_entry (added ad hoc while verifying the BiophysicalEngine
 # path against the real DB) but was missing from this list, so a fresh
 # `python -m app.seed` run would never have created it.
-CROPS = ["maize", "sorghum", "groundnut", "sesame", "cassava", "moringa"]
+CROPS = ["maize", "sorghum", "groundnut", "sesame", "cassava", "moringa", "soybean"]
 
-# agri-venture-v2 only has a biology.json for maize and moringa today --
-# the rest satisfy "CORWADO tracks this crop" but not "agri-venture-v2 can
-# score it". NULL (the default, left unset for crops not in this dict)
-# means the latter isn't true yet. See db/schema.sql migration (Day 15)
-# and get_baseline()'s gate in app/routers/advisory.py.
-AGRIVENTURE_CROP_KEYS = {"maize": "maize", "moringa": "moringa"}
+# agri-venture-v2 has a biology.json (and therefore real biophysical
+# scoring) for maize, moringa, cassava, and soybean today -- these four
+# get a non-NULL agriventure_crop_key so get_baseline() actually reaches
+# /analyze. The rest (sorghum, groundnut, sesame) satisfy "CORWADO tracks
+# this crop" but not "agri-venture-v2 can score it"; NULL (the default,
+# left unset for crops not in this dict) means the latter isn't true yet.
+# Values are literal agri-venture-v2 crops/<name>/ folder names -- a
+# mismatch silently 404s (see header note above). cassava + soybean added
+# 2026-08-01 (both fully built in agri-venture-v2 this session).
+# See db/schema.sql migration (Day 15) and get_baseline()'s gate in
+# app/routers/advisory.py.
+AGRIVENTURE_CROP_KEYS = {
+    "maize": "maize",
+    "moringa": "moringa",
+    "cassava": "cassava",
+    "soybean": "soybean",
+}
 
 PAYAMS = ["Wau Payam", "Bagari Payam", "Bazia Payam", "Farajallah Payam"]
 
