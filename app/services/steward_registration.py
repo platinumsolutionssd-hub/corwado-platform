@@ -117,7 +117,7 @@ def find_possible_duplicate(db: Session, phone_number: Optional[str]) -> Optiona
 
 
 def create_steward(
-    db: Session, data: dict, force_create: bool = False
+    db: Session, data: dict, force_create: bool = False, *, organization_id: str = None
 ) -> Tuple[Optional[models.LandSteward], Optional[models.LandSteward]]:
     """
     Creates a land_steward row from an already-validated field dict (a
@@ -134,6 +134,11 @@ def create_steward(
       match in its confirmation message.
     """
     data = dict(data)
+    # Owner stamp: never client-supplied on the dashboard path — injected from
+    # the authenticated staff's organization. RLS WITH CHECK also refuses any
+    # row whose organization_id isn't the caller's current_org.
+    if organization_id is not None:
+        data["organization_id"] = organization_id
     phone_number = data.get("phone_number")
     if phone_number:
         data["phone_number"] = normalize_phone(phone_number)

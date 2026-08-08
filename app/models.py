@@ -83,6 +83,7 @@ class Cooperative(Base):
 class LandSteward(Base):
     __tablename__ = "land_steward"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     role = Column(SAEnum(StewardRole), nullable=False)
     full_name = Column(Text, nullable=False)
     phone_number = Column(Text)
@@ -483,6 +484,45 @@ class ParcelDrawToken(Base):
     # any direct SQL query checking "was this ever flagged" -- this
     # column exists specifically to be auditable.
     pending_geojson = Column(JSONB(none_as_null=True), nullable=True)
+
+
+class Organization(Base):
+    __tablename__ = "organization"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    name = Column(Text, nullable=False)
+    short_code = Column(Text, unique=True)
+    country = Column(Text)
+    contact_name = Column(Text)
+    contact_phone = Column(Text)
+    # DB default is 'pending' (fail-closed). Product policy for self-signup
+    # lives in code (SELF_SIGNUP_INITIAL_STATUS), not this default.
+    status = Column(Text, nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class StaffAccount(Base):
+    __tablename__ = "staff_account"
+    __table_args__ = (UniqueConstraint("organization_id", "email"),)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
+    email = Column(Text, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    full_name = Column(Text)
+    role = Column(Text, nullable=False, default="admin")  # 'admin' | 'staff' — org-scoped, never landlord
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class PlatformAdmin(Base):
+    """Landlord / cross-org superadmin. Deliberately its own table, never a
+    flag on StaffAccount — the self-signup path has no way to create one."""
+    __tablename__ = "platform_admin"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(Text, nullable=False, unique=True)
+    password_hash = Column(Text, nullable=False)
+    full_name = Column(Text)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class MessageDispatch(Base):
