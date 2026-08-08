@@ -212,6 +212,7 @@ class ParcelDiagnostic(Base):
 class SeasonPlanting(Base):
     __tablename__ = "season_planting"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     sowing_date = Column(Date)
@@ -232,6 +233,7 @@ class InputRequirement(Base):
     __tablename__ = "input_requirement"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     season_planting_id = Column(UUID(as_uuid=False), ForeignKey("season_planting.id"), nullable=False)
     item_name = Column(Text, nullable=False)
     category = Column(SAEnum(InputCategory), nullable=False)
@@ -271,6 +273,7 @@ class InputFinancingRecord(Base):
     __tablename__ = "input_financing_record"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     input_requirement_id = Column(UUID(as_uuid=False), ForeignKey("input_requirement.id"), nullable=False)
     financier_type = Column(SAEnum(FinancierType), nullable=False)
     financier_name = Column(Text)
@@ -450,6 +453,7 @@ class AuthorizedOperator(Base):
     """
     __tablename__ = "authorized_operator"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     full_name = Column(Text, nullable=False)
     phone_number = Column(Text, nullable=False, unique=True)
     role = Column(Text)  # 'corwado_staff' | 'digital_champion' -- reporting only, does not gate anything

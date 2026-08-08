@@ -62,6 +62,7 @@ def seed_maize_baseline(db: Session, season: models.SeasonPlanting, area_ha: flo
         unit_cost_usd = round(kes_per_ha / FX_RATE_KES_PER_USD, 2)
         row = models.InputRequirement(
             season_planting_id=season.id,
+            organization_id=season.organization_id,  # child inherits parent season's org (== caller's current_org)
             item_name=f"{ITEM_LABEL[key]} (KALRO/Farmers Trend baseline)",
             category=models.InputCategory(ITEM_CATEGORY[key]),
             quantity=area_ha,

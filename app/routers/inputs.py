@@ -21,9 +21,10 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services.boq_seed import seed_maize_baseline, ACRES_TO_HECTARES
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 # --------------------------------------------------------------------- #
@@ -87,7 +88,9 @@ class InputRequirementOut(BaseModel):
 
 
 @router.post("/requirements", response_model=InputRequirementOut)
-def create_input_requirement(item: InputRequirementIn, db: Session = Depends(get_db)):
+def create_input_requirement(item: InputRequirementIn,
+                             staff: models.StaffAccount = Depends(get_current_staff),
+                             db: Session = Depends(get_db)):
     season = db.query(models.SeasonPlanting).filter_by(id=item.season_planting_id).first()
     if not season:
         raise HTTPException(status_code=404, detail="season_planting not found")
@@ -102,6 +105,7 @@ def create_input_requirement(item: InputRequirementIn, db: Session = Depends(get
 
     row = models.InputRequirement(
         season_planting_id=item.season_planting_id,
+        organization_id=staff.organization_id,   # stamped from authed staff (== current_org)
         item_name=item.item_name,
         category=category,
         quantity=item.quantity,
@@ -223,7 +227,9 @@ class InputFinancingOut(BaseModel):
 
 
 @router.post("/financing", response_model=InputFinancingOut)
-def create_financing_record(record: InputFinancingIn, db: Session = Depends(get_db)):
+def create_financing_record(record: InputFinancingIn,
+                            staff: models.StaffAccount = Depends(get_current_staff),
+                            db: Session = Depends(get_db)):
     requirement = db.query(models.InputRequirement).filter_by(id=record.input_requirement_id).first()
     if not requirement:
         raise HTTPException(status_code=404, detail="input_requirement not found")
@@ -238,6 +244,7 @@ def create_financing_record(record: InputFinancingIn, db: Session = Depends(get_
 
     row = models.InputFinancingRecord(
         input_requirement_id=record.input_requirement_id,
+        organization_id=staff.organization_id,   # stamped from authed staff (== current_org)
         financier_type=financier_type,
         financier_name=record.financier_name,
         amount_usd=record.amount_usd,
