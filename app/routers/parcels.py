@@ -20,6 +20,7 @@ from pydantic import BaseModel, model_validator
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services import telegram_sender
 from app.services.boq_seed import ACRES_TO_HECTARES
 from app.services.telegram_strings import get_string, language_code_for, DEFAULT_LANGUAGE
@@ -329,7 +330,9 @@ def register_parcel(parcel: ParcelIn, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=List[ParcelOut])
-def list_parcels(steward_id: Optional[str] = None, db: Session = Depends(get_db)):
+def list_parcels(steward_id: Optional[str] = None,
+                 staff: models.StaffAccount = Depends(get_current_staff),
+                 db: Session = Depends(get_db)):
     q = db.query(models.Parcel)
     if steward_id:
         q = q.filter(models.Parcel.steward_id == steward_id)
@@ -337,7 +340,9 @@ def list_parcels(steward_id: Optional[str] = None, db: Session = Depends(get_db)
 
 
 @router.get("/{parcel_id}", response_model=ParcelOut)
-def get_parcel(parcel_id: str, db: Session = Depends(get_db)):
+def get_parcel(parcel_id: str,
+               staff: models.StaffAccount = Depends(get_current_staff),
+               db: Session = Depends(get_db)):
     parcel = db.query(models.Parcel).filter_by(id=parcel_id).first()
     if not parcel:
         raise HTTPException(status_code=404, detail="Parcel not found")

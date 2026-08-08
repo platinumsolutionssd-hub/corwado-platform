@@ -12,9 +12,12 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services import dispatch as dispatch_service
 
-router = APIRouter()
+# Same pattern as stewards: every market route is authenticated + org-scoped
+# by RLS; inserts stamp organization_id from the authenticated staff.
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 # --- Schemas -----------------------------------------------------------
@@ -63,8 +66,8 @@ class DealerIn(BaseModel):
 
 # --- Price board ---------------------------------------------------------
 @router.post("/prices")
-def record_price(entry: PriceIn, db: Session = Depends(get_db)):
-    row = models.PriceBoardEntry(**entry.model_dump())
+def record_price(entry: PriceIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
+    row = models.PriceBoardEntry(**entry.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -83,8 +86,8 @@ def list_prices(crop_id: Optional[str] = None, market_location: Optional[str] = 
 
 # --- Buyers & postings -----------------------------------------------
 @router.post("/buyers")
-def register_buyer(buyer: BuyerIn, db: Session = Depends(get_db)):
-    row = models.Buyer(**buyer.model_dump())
+def register_buyer(buyer: BuyerIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
+    row = models.Buyer(**buyer.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -92,10 +95,10 @@ def register_buyer(buyer: BuyerIn, db: Session = Depends(get_db)):
 
 
 @router.post("/postings")
-def create_posting(posting: PostingIn, db: Session = Depends(get_db)):
+def create_posting(posting: PostingIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
     if not db.query(models.Buyer).filter_by(id=posting.buyer_id).first():
         raise HTTPException(status_code=404, detail="Buyer not found")
-    row = models.BuyerPosting(**posting.model_dump(), status="open")
+    row = models.BuyerPosting(**posting.model_dump(), status="open", organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -184,8 +187,8 @@ def confirm_match(posting_id: str, aggregation_event_id: str, db: Session = Depe
 
 # --- Aggregation events ------------------------------------------------
 @router.post("/aggregation-events")
-def create_aggregation_event(event: AggregationEventIn, db: Session = Depends(get_db)):
-    row = models.AggregationEvent(**event.model_dump())
+def create_aggregation_event(event: AggregationEventIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
+    row = models.AggregationEvent(**event.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.flush()  # get row.id before dispatching, without committing yet
 
@@ -206,11 +209,11 @@ def create_aggregation_event(event: AggregationEventIn, db: Session = Depends(ge
 
 
 @router.post("/aggregation-events/{event_id}/contribute")
-def log_contribution(event_id: str, contribution: ContributionIn, db: Session = Depends(get_db)):
+def log_contribution(event_id: str, contribution: ContributionIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
     event = db.query(models.AggregationEvent).filter_by(id=event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Aggregation event not found")
-    row = models.AggregationContribution(aggregation_event_id=event_id, **contribution.model_dump())
+    row = models.AggregationContribution(aggregation_event_id=event_id, **contribution.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -219,8 +222,8 @@ def log_contribution(event_id: str, contribution: ContributionIn, db: Session = 
 
 # --- Agro-dealer directory ----------------------------------------------
 @router.post("/dealers")
-def register_dealer(dealer: DealerIn, db: Session = Depends(get_db)):
-    row = models.AgroDealer(**dealer.model_dump())
+def register_dealer(dealer: DealerIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
+    row = models.AgroDealer(**dealer.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)

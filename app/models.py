@@ -112,6 +112,7 @@ class LandSteward(Base):
 class Parcel(Base):
     __tablename__ = "parcel"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     geom = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
     # area_acres is a DB-generated column (see db/schema.sql —
@@ -301,6 +302,7 @@ class AdvisorySnapshot(Base):
 class PriceBoardEntry(Base):
     __tablename__ = "price_board_entry"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     market_location = Column(Text, nullable=False)
     price_ssp = Column(Numeric)
@@ -312,6 +314,7 @@ class PriceBoardEntry(Base):
 class Buyer(Base):
     __tablename__ = "buyer"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     contact_phone = Column(Text)
     buyer_type = Column(Text)
@@ -321,6 +324,7 @@ class Buyer(Base):
 class BuyerPosting(Base):
     __tablename__ = "buyer_posting"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     buyer_id = Column(UUID(as_uuid=False), ForeignKey("buyer.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     quantity_kg = Column(Numeric)
@@ -337,6 +341,7 @@ class BuyerPosting(Base):
 class AggregationEvent(Base):
     __tablename__ = "aggregation_event"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     cooperative_id = Column(UUID(as_uuid=False), ForeignKey("cooperative.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     collection_point = Column(Text)
@@ -348,6 +353,7 @@ class AggregationEvent(Base):
 class AggregationContribution(Base):
     __tablename__ = "aggregation_contribution"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     aggregation_event_id = Column(UUID(as_uuid=False), ForeignKey("aggregation_event.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     quantity_kg = Column(Numeric)
@@ -357,6 +363,7 @@ class AggregationContribution(Base):
 class AgroDealer(Base):
     __tablename__ = "agro_dealer"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     location = Column(Text)
     geom = Column(Geometry(geometry_type="POINT", srid=4326))

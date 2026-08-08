@@ -34,7 +34,14 @@ Load schema + seed (run locally against the DB's **external** URL):
 ```
 psql "postgresql://…render-external-url…" -f db/schema.sql
 DATABASE_URL="postgresql://…" python -m app.seed
+psql "postgresql://…render-external-url…" -f db/migrations/001_multitenancy.sql
 ```
+`001_multitenancy.sql` adds organizations + Row-Level Security tenant
+isolation, and backfills all existing rows to the CORWADO org. Run it **after**
+schema + seed. RLS binds only because the migration sets `FORCE ROW LEVEL
+SECURITY` (so the table-owning app role is subject to it) — do **not** run the
+app as a Postgres superuser or a role with `BYPASSRLS`, or isolation is silently
+void. Render's default database role is a non-superuser owner, which is correct.
 `db/schema.sql` enables `postgis` + `uuid-ossp` itself. The seed run is
 idempotent and is what registers all crops — including cassava/soybean's
 real agri-venture-v2 scoring keys.
@@ -54,6 +61,7 @@ real agri-venture-v2 scoring keys.
 | Name | Value is... |
 |---|---|
 | `DATABASE_URL` | Render Postgres **internal** URL, rewritten to the `postgresql://` scheme. |
+| `JWT_SECRET` | Long random secret (>=32 bytes) that signs staff/landlord auth tokens. **No default — the app fails to start if unset** (fail-closed, by design; see `app/security.py`). Generate once with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and keep it stable (rotating it invalidates all existing logins). |
 | `AGRIVENTURE_API_URL` | `https://agri-venture-backend.onrender.com` (NO trailing slash). Without this it defaults to `localhost:8000` and every baseline fails. |
 | `TELEGRAM_BOT_TOKEN` | Your production bot token (outbound replies/dispatch + used by `set_webhook`). |
 | `TELEGRAM_WEBHOOK_SECRET` | Any long random string. The webhook endpoint 403s every update unless this is set here **and** matches what `set_webhook` registered (§6). |
