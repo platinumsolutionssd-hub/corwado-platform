@@ -11,14 +11,14 @@ import json
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import shape
 from pydantic import BaseModel, model_validator
 
-from app.database import get_db
+from app.database import get_db, _apply_tenant_context
 from app import models
 from app.deps import get_current_staff
 from app.services import telegram_sender
@@ -203,6 +203,47 @@ def _consume_draw_token(db: Session, token: str) -> models.ParcelDrawToken:
     return row
 
 
+def _apply_token_org(db: Session, token_row: models.ParcelDrawToken) -> str:
+    """
+    The draw-boundary page is a public, session-less write path: no
+    get_current_staff ran, so no tenant context is set, and every
+    RLS-protected read (land_steward) or write (parcel) below would be
+    denied / fail its WITH CHECK.
+
+    Unlike the Telegram/WhatsApp inbound resolvers -- which must reach
+    THROUGH RLS into authorized_operator/land_steward via a SECURITY
+    DEFINER function -- the parcel_draw_token is itself a pre-identity,
+    RLS-exempt credential (migration 002, Fork A) that already carries
+    organization_id, stamped at mint from the resolving steward's org.
+    So org-resolution here is a direct read of the token row (no
+    SECURITY DEFINER needed); we then re-apply that org to THIS session
+    with the same _set_org_context idiom the inbound resolvers use, so
+    the subsequent steward read and parcel insert are correctly scoped.
+    Because it writes db.info['tenant'], the after_begin listener also
+    re-applies it across the large-area path's mid-request db.commit().
+
+    Fail-closed -- never resolve to an unscoped write:
+      - token carries no org stamp (legacy/malformed) -> 409
+      - org no longer active (suspended after the token was minted) -> 403
+    """
+    org_id = token_row.organization_id
+    if not org_id:
+        raise HTTPException(
+            status_code=409,
+            detail="This boundary link is missing its organization — ask CORWADO staff to send a new one.",
+        )
+    # organization is a registry table (not RLS-scoped), readable session-less.
+    org = db.query(models.Organization).filter_by(id=org_id).first()
+    if not org or org.status != "active":
+        raise HTTPException(
+            status_code=403,
+            detail="This organization is not active — contact CORWADO staff.",
+        )
+    db.info["tenant"] = {"org_id": org_id}
+    _apply_tenant_context(db, db.connection())
+    return org_id
+
+
 @router.get("/draw-token/{token}")
 def get_draw_token(token: str, db: Session = Depends(get_db)):
     """
@@ -214,6 +255,7 @@ def get_draw_token(token: str, db: Session = Depends(get_db)):
     the actual POST /api/parcels save below).
     """
     row = _peek_draw_token(db, token)
+    _apply_token_org(db, row)  # scope this session to the token's org before the RLS-protected steward read
     steward = db.query(models.LandSteward).filter_by(id=row.steward_id).first()
     if not steward:
         raise HTTPException(status_code=404, detail="The farmer this link was created for no longer exists.")
@@ -221,7 +263,7 @@ def get_draw_token(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=None)
-def register_parcel(parcel: ParcelIn, db: Session = Depends(get_db)):
+def register_parcel(parcel: ParcelIn, authorization: str = Header(None), db: Session = Depends(get_db)):
     try:
         shp = shape(parcel.geojson)
     except Exception as e:
@@ -230,17 +272,27 @@ def register_parcel(parcel: ParcelIn, db: Session = Depends(get_db)):
     if shp.geom_type != "Polygon":
         raise HTTPException(status_code=422, detail="geojson must be a Polygon")
 
-    # Resolve who this is for WITHOUT consuming the token yet -- a
-    # large-area submission on the token path defers the actual save to
-    # a Telegram YES/NO reply (below), so the token can't be spent here;
-    # it's spent only once we know this submission is actually going to
-    # be persisted (either under threshold, or over it and about to be
-    # staged for confirmation).
+    # Resolve who this is for AND scope the session to the right org WITHOUT
+    # consuming the token yet -- a large-area submission on the token path
+    # defers the actual save to a Telegram YES/NO reply (below), so the
+    # token can't be spent here; it's spent only once we know this
+    # submission is actually going to be persisted (either under threshold,
+    # or over it and about to be staged for confirmation).
     if parcel.token:
+        # Public draw-boundary hand-off: no staff session. Resolve the org
+        # from the RLS-exempt token itself and scope THIS session to it
+        # before any RLS-protected steward read / parcel write below.
         token_row = _peek_draw_token(db, parcel.token)
+        org_id = _apply_token_org(db, token_row)
         steward_id = token_row.steward_id
     else:
+        # Dashboard path: a staff member drawing on a steward in their own
+        # org. Requires a valid staff token, which sets the tenant context;
+        # RLS then guarantees the steward lookup can only ever see -- and
+        # this parcel can only be stamped to -- that staff member's org.
         token_row = None
+        staff = get_current_staff(authorization=authorization, db=db)
+        org_id = staff.organization_id
         if not db.query(models.LandSteward).filter_by(id=parcel.steward_id).first():
             raise HTTPException(status_code=404, detail="steward_id does not exist — register the steward first")
         steward_id = parcel.steward_id
@@ -303,6 +355,7 @@ def register_parcel(parcel: ParcelIn, db: Session = Depends(get_db)):
 
     db_parcel = models.Parcel(
         steward_id=steward_id,
+        organization_id=org_id,  # explicit tenant stamp; RLS WITH CHECK also enforces org_id == app.current_org
         geom=from_shape(shp, srid=4326),
         area_flagged_large=flagged,
         area_confirmed_at=datetime.now(timezone.utc) if flagged else None,
