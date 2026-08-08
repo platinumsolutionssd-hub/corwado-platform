@@ -71,6 +71,7 @@ class FinancierType(str, enum.Enum):
 class Cooperative(Base):
     __tablename__ = "cooperative"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     type = Column(Text)  # cooperative | vsla | farmer_group
     payam = Column(Text)
@@ -174,6 +175,7 @@ class ParcelCropBaseline(Base):
     __table_args__ = (UniqueConstraint("parcel_id", "crop_id"),)
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     # Flattened summary for dashboard/dispatch use: overall_score,
@@ -199,6 +201,7 @@ class ParcelDiagnostic(Base):
     __tablename__ = "parcel_diagnostic"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False, unique=True)
     # Full, unmodified LandDiagnostic response (climate/soil/water/
     # vegetation/topography/land_use/carbon fact lists, external reference
@@ -287,6 +290,7 @@ class InputFinancingRecord(Base):
 class AdvisorySnapshot(Base):
     __tablename__ = "advisory_snapshot"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     source = Column(SAEnum(AdvisorySource), nullable=False)
     soil_n = Column(Numeric)
@@ -377,6 +381,7 @@ class AgroDealer(Base):
 class RadioStation(Base):
     __tablename__ = "radio_station"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     frequency = Column(Text)
     # Was Column(JSON) ("keeps SQLite-testable") -- but db/schema.sql
@@ -393,6 +398,7 @@ class RadioStation(Base):
 class RadioBroadcastSlot(Base):
     __tablename__ = "radio_broadcast_slot"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     radio_station_id = Column(UUID(as_uuid=False), ForeignKey("radio_station.id"), nullable=False)
     day_of_week = Column(Text)
     time_slot = Column(Text)
@@ -539,6 +545,7 @@ class PlatformAdmin(Base):
 class MessageDispatch(Base):
     __tablename__ = "message_dispatch"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=True)
     channel = Column(SAEnum(DispatchChannel), nullable=False)
     # Added Day 10-11 — see db/schema.sql migration note.
