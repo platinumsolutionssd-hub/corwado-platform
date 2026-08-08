@@ -50,11 +50,13 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import from_shape
 from shapely.geometry import shape
 
 from app import models
+from app.database import _apply_tenant_context
 from app.services.steward_registration import create_steward, find_possible_duplicate, normalize_phone
 from app.services.telegram_strings import get_string, language_code_for, DEFAULT_LANGUAGE
 
@@ -91,7 +93,82 @@ YES_WORDS = {"YES", "NAM"}
 NO_WORDS = {"NO", "LA"}
 
 
-def _find_steward_by_chat(db: Session, chat_id: str):
+# --------------------------------------------------------------------- #
+# Multi-tenancy: establish a tenant context for a public, session-less
+# inbound message. The two resolvers are SECURITY DEFINER functions
+# (see db/migrations/002) that read the RLS-protected identity tables
+# without a context and return only (organization_id, status). We then
+# EXPLICITLY set app.current_org from that, so every subsequent query runs
+# under ordinary RLS. RLS is never bypassed for the request itself.
+# --------------------------------------------------------------------- #
+def _resolve_chat_org(db: Session, chat_id: str, channel: str):
+    row = db.execute(
+        text("SELECT organization_id, org_status FROM resolve_chat_org(:c, :ch)"),
+        {"c": chat_id, "ch": channel},
+    ).first()
+    return (str(row[0]), row[1]) if row else None
+
+
+def _resolve_phone_org(db: Session, phone: str, channel: str):
+    row = db.execute(
+        text("SELECT organization_id, org_status FROM resolve_phone_org(:p, :ch)"),
+        {"p": phone, "ch": channel},
+    ).first()
+    return (str(row[0]), row[1]) if row else None
+
+
+def _set_org_context(db: Session, org_id: str):
+    db.info["tenant"] = {"org_id": org_id}
+    _apply_tenant_context(db, db.connection())
+
+
+def _log_inbound(db: Session, chat_id: str, raw_text: str, intent: str,
+                 reply: str, channel: str, org_id=None, steward_id=None):
+    # inbound_message is RLS-exempt with a nullable org (migration 002), so
+    # this works whether or not a tenant context was established.
+    db.add(models.InboundMessage(
+        steward_id=steward_id,
+        organization_id=org_id,
+        channel=channel,
+        external_chat_id=chat_id,
+        raw_text=raw_text,
+        parsed_intent=intent,
+        parsed_params={},
+        response_text=reply,
+        processed_at=datetime.utcnow(),
+    ))
+    db.commit()
+
+
+def _reject_unregistered(db: Session, chat_id: str, raw_text: str, channel: str) -> str:
+    # FAILURE MODE 1: chat not linked to any steward/operator, and not a
+    # linking command. Reject cleanly; never fall through to a default org.
+    reply = (
+        "You're not registered yet. If a CORWADO worker has your phone "
+        "number on file, send: REGISTER <your phone>. Staff: send STAFF <your phone>."
+    )
+    _log_inbound(db, chat_id, raw_text, "rejected_unregistered", reply, channel)
+    return reply
+
+
+def _reject_pending(db: Session, chat_id: str, raw_text: str, channel: str) -> str:
+    # FAILURE MODE 2: the resolved organization is not active (pending
+    # approval or suspended). Block the write with a clear reason.
+    reply = (
+        "Your organization is awaiting approval and can't be used yet. "
+        "Please try again once an administrator has activated it."
+    )
+    _log_inbound(db, chat_id, raw_text, "rejected_org_inactive", reply, channel)
+    return reply
+
+
+def _find_steward_by_chat(db: Session, chat_id: str, channel: str = "telegram"):
+    # channel-aware identity lookup. Telegram (default) resolves by
+    # telegram_chat_id exactly as before; WhatsApp resolves by
+    # whatsapp_number (the wa_id, normalized upstream by the webhook
+    # receiver so it compares equal to what onboarding stored).
+    if channel == "whatsapp":
+        return db.query(models.LandSteward).filter_by(whatsapp_number=chat_id).first()
     return db.query(models.LandSteward).filter_by(telegram_chat_id=chat_id).first()
 
 
@@ -281,6 +358,7 @@ def _mint_draw_token(db: Session, chat_id: str, steward) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=DRAW_TOKEN_EXPIRY_MINUTES)
     db.add(models.ParcelDrawToken(
         token=token,
+        organization_id=steward.organization_id,  # stamped from the resolved steward's org
         steward_id=steward.id,
         originating_chat_id=chat_id,
         expires_at=expires_at,
@@ -491,7 +569,7 @@ def _handle_new_farmer_gender(db: Session, raw_text: str, context: dict, operato
         "registered_by": operator.full_name,
         "registered_offline": False,
     }
-    steward, _ = create_steward(db, data, force_create=True)
+    steward, _ = create_steward(db, data, force_create=True, organization_id=operator.organization_id)
     reply = get_string("new_farmer_created", name=steward.full_name)
     return {"last_created_steward_id": steward.id}, None, reply
 
@@ -568,7 +646,7 @@ def _handle_onboard_phone(db: Session, chat_id: str, raw_text: str, context: dic
     return context, "onboard_gender", get_string("gender_menu")
 
 
-def _handle_onboard_link_existing_confirm(db: Session, chat_id: str, raw_text: str, context: dict):
+def _handle_onboard_link_existing_confirm(db: Session, chat_id: str, raw_text: str, context: dict, channel: str = "telegram"):
     """
     The conservative duplicate-resolution gate: YES links THIS chat to
     the already-existing (but not yet Telegram-linked) record -- reusing
@@ -594,7 +672,14 @@ def _handle_onboard_link_existing_confirm(db: Session, chat_id: str, raw_text: s
             # in the gap between the phone step and this confirmation --
             # same collision _handle_register already guards against.
             return None, None, get_string("register_phone_linked_elsewhere")
-        existing.telegram_chat_id = chat_id
+        # Channel-aware link, same split as _create_self_onboarded_steward:
+        # WhatsApp writes the normalized wa_id into whatsapp_number and
+        # leaves telegram_chat_id untouched; Telegram (default) is
+        # byte-identical to before.
+        if channel == "whatsapp":
+            existing.whatsapp_number = normalize_phone(chat_id)
+        else:
+            existing.telegram_chat_id = chat_id
         existing_lang = language_code_for(existing.preferred_language)
         next_awaiting, _, _, boundary_reply = _handle_boundary_self(db, chat_id, existing, existing_lang)
         reply = get_string("register_linked", existing_lang, name=existing.full_name) + "\n\n" + boundary_reply
@@ -634,7 +719,7 @@ def _handle_onboard_youth(raw_text: str, context: dict):
     return context, "onboard_disability", get_string("onboard_disability_prompt")
 
 
-def _handle_onboard_disability(db: Session, chat_id: str, raw_text: str, context: dict):
+def _handle_onboard_disability(db: Session, chat_id: str, raw_text: str, context: dict, channel: str = "telegram"):
     choice = raw_text.strip().upper()
     if choice == "YES":
         context["has_disability"] = True
@@ -642,7 +727,7 @@ def _handle_onboard_disability(db: Session, chat_id: str, raw_text: str, context
     if choice in ("NO", "SKIP"):
         context["has_disability"] = False if choice == "NO" else None
         context["disability_notes"] = None
-        next_awaiting, reply = _create_self_onboarded_steward(db, chat_id, context)
+        next_awaiting, reply = _create_self_onboarded_steward(db, chat_id, context, channel)
         return None, next_awaiting, reply
     return (
         context, "onboard_disability",
@@ -650,18 +735,18 @@ def _handle_onboard_disability(db: Session, chat_id: str, raw_text: str, context
     )
 
 
-def _handle_onboard_disability_notes(db: Session, chat_id: str, raw_text: str, context: dict):
+def _handle_onboard_disability_notes(db: Session, chat_id: str, raw_text: str, context: dict, channel: str = "telegram"):
     """
     Free text, never validated/re-prompted -- SKIP or an empty reply
     both leave disability_notes unset. Never a forced field.
     """
     notes = raw_text.strip()
     context["disability_notes"] = None if (not notes or notes.upper() == "SKIP") else notes
-    next_awaiting, reply = _create_self_onboarded_steward(db, chat_id, context)
+    next_awaiting, reply = _create_self_onboarded_steward(db, chat_id, context, channel)
     return None, next_awaiting, reply
 
 
-def _create_self_onboarded_steward(db: Session, chat_id: str, context: dict):
+def _create_self_onboarded_steward(db: Session, chat_id: str, context: dict, channel: str = "telegram"):
     """
     Shared completion step reached from both disability-question exits
     (NO/SKIP finishes immediately; YES finishes one step later, after
@@ -685,6 +770,14 @@ def _create_self_onboarded_steward(db: Session, chat_id: str, context: dict):
        this refuses and defers to staff, same as every other duplicate
        outcome in this flow, rather than silently force-creating.
     """
+    # Identity column depends on the channel: Telegram writes
+    # telegram_chat_id (unchanged); WhatsApp writes the normalized wa_id
+    # into whatsapp_number and leaves telegram_chat_id NULL, so the two
+    # channels never cross-link a record. registered_by records which
+    # channel self-registered it. normalize_phone(chat_id) is idempotent
+    # for the already-normalized wa_id the webhook passes in, so the
+    # stored value compares equal to the _find_steward_by_chat lookup.
+    channel_label = "Telegram" if channel == "telegram" else "WhatsApp" if channel == "whatsapp" else channel
     data = {
         "role": "smallholder_farmer",
         "full_name": context["full_name"],
@@ -693,11 +786,17 @@ def _create_self_onboarded_steward(db: Session, chat_id: str, context: dict):
         "is_youth": context.get("is_youth"),
         "has_disability": context.get("has_disability"),
         "disability_notes": context.get("disability_notes"),
-        "registered_by": "self-service (Telegram)",
+        "registered_by": f"self-service ({channel_label})",
         "registered_offline": False,
-        "telegram_chat_id": chat_id,
     }
-    steward, duplicate = create_steward(db, data, force_create=False)
+    if channel == "whatsapp":
+        data["whatsapp_number"] = normalize_phone(chat_id)
+    else:
+        data["telegram_chat_id"] = chat_id
+    steward, duplicate = create_steward(
+        db, data, force_create=False,
+        organization_id=(db.info.get("tenant") or {}).get("org_id"),
+    )
     if steward is None:
         return None, get_string("onboard_link_existing_needs_staff", name=duplicate.full_name)
     steward_lang = language_code_for(steward.preferred_language)
@@ -941,12 +1040,19 @@ def _split_command(raw_text: str):
     return None, ""
 
 
-def handle_update(db: Session, update: dict) -> str:
+def handle_update(db: Session, update: dict, channel: str = "telegram") -> str:
     """
-    Processes one Telegram getUpdates() message dict, logs it as an
-    inbound_message row, and returns the reply text for the poller to
-    send back via sendMessage. Returns "" if the update has no text
-    message to act on (e.g. an edited_message or non-text update).
+    Processes one inbound message dict, logs it as an inbound_message
+    row, and returns the reply text for the caller to send back. Returns
+    "" if the update has no text message to act on (e.g. an
+    edited_message or non-text update).
+
+    `channel` selects the identity/transport this message arrived on and
+    defaults to "telegram", so every existing Telegram call site is
+    byte-identical. The update dict must be Telegram-shaped regardless of
+    channel ({"message": {"chat": {"id": ...}, "text": ...}}) -- the
+    WhatsApp webhook receiver adapts Meta's payload into this shape and
+    passes channel="whatsapp".
     """
     message = update.get("message")
     if not message or "text" not in message:
@@ -955,8 +1061,46 @@ def handle_update(db: Session, update: dict) -> str:
     chat_id = str(message["chat"]["id"])
     raw_text = message["text"].strip()
 
-    steward = _find_steward_by_chat(db, chat_id)
-    state = _get_conversation_state(db, chat_id)
+    # --- Multi-tenancy: establish the tenant context before any RLS-scoped
+    # read/write. A public inbound message carries no logged-in staff session,
+    # so the org is resolved via the SECURITY DEFINER resolvers and then
+    # EXPLICITLY re-applied as app.current_org (see the resolver helpers above
+    # and db/migrations/002). Two fail-closed rejections: unknown chat,
+    # pending/inactive org. ---
+    _ctx = _resolve_chat_org(db, chat_id, channel)
+    if _ctx is None:
+        # Chat not linked. The linking commands (REGISTER/STAFF) legitimately
+        # arrive on an unlinked chat and carry the phone that identifies the
+        # org -- resolve that; everything else from an unknown chat is rejected.
+        _cmd, _cmd_args = _split_command(raw_text)
+        if _cmd in ("REGISTER", "STAFF"):
+            _phone = normalize_phone(_cmd_args)
+            _by_phone = _resolve_phone_org(db, _phone, channel) if _phone else None
+            if _by_phone is not None:
+                if _by_phone[1] != "active":
+                    return _reject_pending(db, chat_id, raw_text, channel)
+                _set_org_context(db, _by_phone[0])
+            # else: no phone match -> no context set; the linking handler's own
+            # RLS-deny-closed lookup returns nothing and produces its own
+            # "not found" reply, which is the correct outcome.
+        else:
+            return _reject_unregistered(db, chat_id, raw_text, channel)
+    elif _ctx[1] != "active":
+        return _reject_pending(db, chat_id, raw_text, channel)
+    else:
+        _set_org_context(db, _ctx[0])
+    # --- end tenant context establishment ---
+
+    # Namespace the conversation-state key per channel so a WhatsApp
+    # wa_id can never collide with a Telegram numeric chat_id in the
+    # shared telegram_conversation_state table (PK = chat_id). Telegram
+    # keeps its bare chat_id, so every existing state row is untouched.
+    # _get_conversation_state and the table itself are deliberately not
+    # modified -- only the key we hand it changes.
+    state_key = chat_id if channel == "telegram" else f"{channel}:{chat_id}"
+
+    steward = _find_steward_by_chat(db, chat_id, channel)
+    state = _get_conversation_state(db, state_key)
     context = dict(state.context or {})
     # Farmer-facing language for this exchange: the linked steward's own
     # preference if one exists, English otherwise (an unlinked chat has
@@ -972,7 +1116,7 @@ def handle_update(db: Session, update: dict) -> str:
     elif state.awaiting == "phone_for_register":
         state.awaiting = None
         intent, params, reply = _handle_register(db, chat_id, raw_text, lang)
-        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: REGISTER may have just linked it
+        steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: REGISTER may have just linked it
     elif state.awaiting == "crop_for_price":
         state.awaiting = None
         crop_name = _resolve_crop_reply(db, raw_text)
@@ -1003,7 +1147,7 @@ def handle_update(db: Session, update: dict) -> str:
         new_context, next_awaiting, reply = _handle_onboard_name(db, chat_id, raw_text, context, lang)
         state.context = new_context if new_context is not None else {}
         state.awaiting = next_awaiting
-        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: REGISTER may have just linked it
+        steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: REGISTER may have just linked it
         intent, params = "onboard_step", {"step": "name"}
     elif state.awaiting == "onboard_phone":
         new_context, next_awaiting, reply = _handle_onboard_phone(db, chat_id, raw_text, context)
@@ -1011,10 +1155,10 @@ def handle_update(db: Session, update: dict) -> str:
         state.awaiting = next_awaiting
         intent, params = "onboard_step", {"step": "phone"}
     elif state.awaiting == "onboard_link_existing_confirm":
-        new_context, next_awaiting, reply = _handle_onboard_link_existing_confirm(db, chat_id, raw_text, context)
+        new_context, next_awaiting, reply = _handle_onboard_link_existing_confirm(db, chat_id, raw_text, context, channel)
         state.context = new_context if new_context is not None else {}
         state.awaiting = next_awaiting
-        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: may have just linked
+        steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: may have just linked
         intent, params = "onboard_step", {"step": "link_existing_confirm"}
     elif state.awaiting == "onboard_gender":
         new_context, next_awaiting, reply = _handle_onboard_gender(raw_text, context)
@@ -1027,16 +1171,16 @@ def handle_update(db: Session, update: dict) -> str:
         state.awaiting = next_awaiting
         intent, params = "onboard_step", {"step": "youth"}
     elif state.awaiting == "onboard_disability":
-        new_context, next_awaiting, reply = _handle_onboard_disability(db, chat_id, raw_text, context)
+        new_context, next_awaiting, reply = _handle_onboard_disability(db, chat_id, raw_text, context, channel)
         state.context = new_context if new_context is not None else {}
         state.awaiting = next_awaiting
-        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: creation may have just happened
+        steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: creation may have just happened
         intent, params = "onboard_step", {"step": "disability"}
     elif state.awaiting == "onboard_disability_notes":
-        new_context, next_awaiting, reply = _handle_onboard_disability_notes(db, chat_id, raw_text, context)
+        new_context, next_awaiting, reply = _handle_onboard_disability_notes(db, chat_id, raw_text, context, channel)
         state.context = new_context if new_context is not None else {}
         state.awaiting = next_awaiting
-        steward = _find_steward_by_chat(db, chat_id)  # re-resolve: creation may have just happened
+        steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: creation may have just happened
         intent, params = "onboard_step", {"step": "disability_notes"}
     elif state.awaiting == "boundary_self_confirm":
         next_awaiting, intent, params, reply = _handle_boundary_self_confirm(db, chat_id, raw_text, lang)
@@ -1066,7 +1210,7 @@ def handle_update(db: Session, update: dict) -> str:
 
         if command == "REGISTER":
             intent, params, reply = _handle_register(db, chat_id, args, lang)
-            steward = _find_steward_by_chat(db, chat_id)  # re-resolve: REGISTER may have just linked it
+            steward = _find_steward_by_chat(db, chat_id, channel)  # re-resolve: REGISTER may have just linked it
         elif command == "PRICE":
             intent, params, reply = _handle_price(db, args, lang)
         elif command == "STATUS":
@@ -1160,7 +1304,8 @@ def handle_update(db: Session, update: dict) -> str:
 
     db.add(models.InboundMessage(
         steward_id=steward.id if steward else None,
-        channel="telegram",
+        organization_id=(db.info.get("tenant") or {}).get("org_id"),  # resolved context org, or None
+        channel=channel,
         external_chat_id=chat_id,
         raw_text=raw_text,
         parsed_intent=intent,

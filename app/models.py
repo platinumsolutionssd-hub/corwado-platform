@@ -415,6 +415,9 @@ class InboundMessage(Base):
     """
     __tablename__ = "inbound_message"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # Pre-identity capture table: RLS-exempt, org nullable (see migration 002).
+    # Stamped when the sender's org is known; NULL for an unknown/rejected sender.
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=True)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=True)
     channel = Column(Text, nullable=False, default="telegram")
     external_chat_id = Column(Text, nullable=False)
@@ -482,6 +485,9 @@ class ParcelDrawToken(Base):
     """
     __tablename__ = "parcel_draw_token"
     token = Column(Text, primary_key=True)
+    # Pre-identity credential: RLS-exempt, org nullable (see migration 002).
+    # Stamped at mint from the resolved steward's org.
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=True)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     originating_chat_id = Column(Text, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
