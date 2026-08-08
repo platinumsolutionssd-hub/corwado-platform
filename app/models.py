@@ -461,10 +461,14 @@ class AuthorizedOperator(Base):
     db/schema.sql migration note for the full reasoning.
     """
     __tablename__ = "authorized_operator"
+    # phone_number is unique PER ORGANIZATION, not globally (migration 003):
+    # two orgs may legitimately share an operator phone. telegram_chat_id
+    # stays globally unique (one chat = one person; resolve_chat_org relies on it).
+    __table_args__ = (UniqueConstraint("organization_id", "phone_number"),)
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
     organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     full_name = Column(Text, nullable=False)
-    phone_number = Column(Text, nullable=False, unique=True)
+    phone_number = Column(Text, nullable=False)  # unique per-org via __table_args__ (migration 003)
     role = Column(Text)  # 'corwado_staff' | 'digital_champion' -- reporting only, does not gate anything
     telegram_chat_id = Column(Text, unique=True)
     added_by = Column(Text, nullable=False)
