@@ -30,11 +30,43 @@ Create a Render **PostgreSQL** instance. Note its connection URL. Render
 hands out a `postgres://…` URL — SQLAlchemy 2.0 rejects that scheme; rewrite
 the prefix to `postgresql://…` before using it as `DATABASE_URL`.
 
-Load schema + seed (run locally against the DB's **external** URL):
+Load schema + seed, create the app's restricted login role, then run **all
+three migrations in order** (run against the DB's **external** URL, as the
+DB's owner/admin role):
 ```
+# 1. schema + seed
 psql "postgresql://…render-external-url…" -f db/schema.sql
 DATABASE_URL="postgresql://…" python -m app.seed
+
+# 2. create the restricted app role BEFORE the migrations —
+#    002 grants EXECUTE on the resolver functions to it, so it must exist first.
+psql "postgresql://…render-external-url…" \
+  -c "CREATE ROLE corwado_app LOGIN PASSWORD '<pick-a-strong-password>' NOSUPERUSER NOBYPASSRLS;"
+
+# 3. migrations, strictly in this order
+psql "postgresql://…render-external-url…" -f db/migrations/001_multitenancy.sql
+psql "postgresql://…render-external-url…" -f db/migrations/002_telegram_resolver.sql
+psql "postgresql://…render-external-url…" -f db/migrations/003_operator_phone_per_org.sql
+
+# 4. give the app role DML + sequence access (RLS still constrains every row it sees)
+psql "postgresql://…render-external-url…" \
+  -c "GRANT USAGE ON SCHEMA public TO corwado_app;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO corwado_app;
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO corwado_app;"
 ```
+Then set the backend's `DATABASE_URL` to connect **as `corwado_app`** (not the
+owner role). This is what makes RLS bind: `corwado_app` is a non-superuser,
+non-`BYPASSRLS` role that does **not** own the tables, so every tenant policy
+applies to it — do **not** run the app as a Postgres superuser, the owner, or
+any role with `BYPASSRLS`, or isolation is silently void. (Migrations are run
+as the owner/admin role; `001` also sets `FORCE ROW LEVEL SECURITY` so even the
+owner is covered, but the app itself connects as the restricted `corwado_app`.)
+
+What each migration does — all three are **required**, in order:
+- `001_multitenancy.sql` — organizations + staff/landlord tables + RLS tenant isolation; backfills every existing row to the CORWADO org.
+- `002_telegram_resolver.sql` — the `SECURITY DEFINER` chat/phone→org resolver seam that lets session-less Telegram/WhatsApp inbound establish a tenant context, and relaxes the two pre-identity tables (`inbound_message`, `parcel_draw_token`). **Without it every inbound bot message 500s** (the resolver functions won't exist).
+- `003_operator_phone_per_org.sql` — makes `authorized_operator.phone_number` unique **per organization** instead of globally, so two orgs can legitimately share an operator phone without a 500.
+
 `db/schema.sql` enables `postgis` + `uuid-ossp` itself. The seed run is
 idempotent and is what registers all crops — including cassava/soybean's
 real agri-venture-v2 scoring keys.
@@ -54,6 +86,7 @@ real agri-venture-v2 scoring keys.
 | Name | Value is... |
 |---|---|
 | `DATABASE_URL` | Render Postgres **internal** URL, rewritten to the `postgresql://` scheme. |
+| `JWT_SECRET` | Long random secret (>=32 bytes) that signs staff/landlord auth tokens. **No default — the app fails to start if unset** (fail-closed, by design; see `app/security.py`). Generate once with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and keep it stable (rotating it invalidates all existing logins). |
 | `AGRIVENTURE_API_URL` | `https://agri-venture-backend.onrender.com` (NO trailing slash). Without this it defaults to `localhost:8000` and every baseline fails. |
 | `TELEGRAM_BOT_TOKEN` | Your production bot token (outbound replies/dispatch + used by `set_webhook`). |
 | `TELEGRAM_WEBHOOK_SECRET` | Any long random string. The webhook endpoint 403s every update unless this is set here **and** matches what `set_webhook` registered (§6). |

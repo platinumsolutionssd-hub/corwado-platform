@@ -19,9 +19,13 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services.steward_registration import create_steward
 
-router = APIRouter()
+# Router-level dependency: EVERY route here is authenticated + org-scoped.
+# No individual route can forget it. Reads need no further change — RLS scopes
+# them, so a cross-org GET by id returns None -> the existing 404.
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 class StewardIn(BaseModel):
@@ -74,7 +78,9 @@ class StewardOut(StewardIn):
 
 
 @router.post("", response_model=StewardOut)
-def register_steward(steward: StewardIn, force_create: bool = False, db: Session = Depends(get_db)):
+def register_steward(steward: StewardIn, force_create: bool = False,
+                     staff: models.StaffAccount = Depends(get_current_staff),
+                     db: Session = Depends(get_db)):
     """
     Single, online registration — sets synced_at immediately.
 
@@ -86,7 +92,10 @@ def register_steward(steward: StewardIn, force_create: bool = False, db: Session
     across stewards) or silently creating a duplicate. See
     app/services/steward_registration.py.
     """
-    db_steward, duplicate = create_steward(db, steward.model_dump(), force_create=force_create)
+    db_steward, duplicate = create_steward(
+        db, steward.model_dump(), force_create=force_create,
+        organization_id=staff.organization_id,   # stamped from the authed staff, never client input
+    )
     if db_steward is None:
         raise HTTPException(
             status_code=409,

@@ -150,6 +150,7 @@ def dispatch_to_steward(
 
     row = models.MessageDispatch(
         steward_id=steward.id,
+        organization_id=steward.organization_id,  # scopes to the steward's org (== caller's current_org)
         channel=channel,
         content_type=content_type,
         content_ref_id=content_ref_id,
@@ -233,6 +234,7 @@ def broadcast_to_payam(
 
     row = models.MessageDispatch(
         steward_id=None,
+        organization_id=slot.organization_id,  # radio broadcast: no steward, scope to the slot's org
         channel="radio",
         radio_slot_id=slot.id,
         content_type=content_type,

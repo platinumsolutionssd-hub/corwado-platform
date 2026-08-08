@@ -19,8 +19,9 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 class SeasonPlantingIn(BaseModel):
@@ -56,7 +57,9 @@ def _season_to_out(season: models.SeasonPlanting, crop_name: str) -> SeasonPlant
 
 
 @router.post("", response_model=SeasonPlantingOut)
-def start_season(season: SeasonPlantingIn, db: Session = Depends(get_db)):
+def start_season(season: SeasonPlantingIn,
+                 staff: models.StaffAccount = Depends(get_current_staff),
+                 db: Session = Depends(get_db)):
     """
     Starts a season_planting cycle -- the "Start a season" action a
     parcel card offers before its Bill of Quantities can exist. Crop is
@@ -77,6 +80,7 @@ def start_season(season: SeasonPlantingIn, db: Session = Depends(get_db)):
 
     row = models.SeasonPlanting(
         parcel_id=season.parcel_id,
+        organization_id=staff.organization_id,   # stamped from authed staff (== current_org)
         crop_id=crop_entry.id,
         sowing_date=season.sowing_date,
         season_label=season.season_label,

@@ -17,9 +17,10 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services.steward_registration import normalize_phone
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 class AuthorizedOperatorIn(BaseModel):
@@ -44,7 +45,9 @@ class AuthorizedOperatorOut(BaseModel):
 
 
 @router.post("", response_model=AuthorizedOperatorOut)
-def add_authorized_operator(operator: AuthorizedOperatorIn, db: Session = Depends(get_db)):
+def add_authorized_operator(operator: AuthorizedOperatorIn,
+                            staff: models.StaffAccount = Depends(get_current_staff),
+                            db: Session = Depends(get_db)):
     phone = normalize_phone(operator.phone_number)
     existing = db.query(models.AuthorizedOperator).filter_by(phone_number=phone).first()
     if existing:
@@ -54,6 +57,7 @@ def add_authorized_operator(operator: AuthorizedOperatorIn, db: Session = Depend
         )
     row = models.AuthorizedOperator(
         full_name=operator.full_name,
+        organization_id=staff.organization_id,   # stamped from authed staff (== current_org)
         phone_number=phone,
         role=operator.role,
         added_by=operator.added_by,

@@ -47,8 +47,12 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 
-router = APIRouter()
+# Router-level auth+scope. Each write route fetches its parcel first (RLS-
+# scoped), so organization_id is stamped from parcel.organization_id, which
+# equals the caller's current_org.
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 BASELINE_REFRESH_INTERVAL_DAYS = 365  # slow-changing data: recheck yearly
 DIAGNOSTIC_REFRESH_INTERVAL_DAYS = 365  # same tiered slow-data cadence as baseline
@@ -362,6 +366,7 @@ def get_baseline(parcel_id: str, crop: str, force_refresh: bool = False, db: Ses
         refresh_due = now + timedelta(days=BASELINE_REFRESH_INTERVAL_DAYS)
         stmt = pg_insert(models.ParcelCropBaseline).values(
             parcel_id=parcel_id,
+            organization_id=parcel.organization_id,   # stamped in .values() (== current_org)
             crop_id=crop_entry.id,
             suitability=mapped["suitability"],
             suitability_raw=mapped["suitability_raw"],
@@ -456,6 +461,7 @@ def get_diagnostic(parcel_id: str, depth: str = "quick", force_refresh: bool = F
         refresh_due = now + timedelta(days=DIAGNOSTIC_REFRESH_INTERVAL_DAYS)
         stmt = pg_insert(models.ParcelDiagnostic).values(
             parcel_id=parcel_id,
+            organization_id=parcel.organization_id,   # stamped in .values() (== current_org)
             diagnostic=diagnostic_payload,
             depth=depth,
             computed_at=now,
@@ -563,7 +569,7 @@ def get_live_advisory(
 
     payload = satyukt_engine.analyse(parcel, crop)
     snapshot = models.AdvisorySnapshot(
-        parcel_id=parcel_id, source=source,
+        parcel_id=parcel_id, organization_id=parcel.organization_id, source=source,
         soil_n=payload["soil_n"], soil_p=payload["soil_p"], soil_k=payload["soil_k"],
         soil_soc=payload["soil_soc"], soil_ph=payload["soil_ph"], ndvi=payload["ndvi"],
         soil_moisture=payload["soil_moisture"],

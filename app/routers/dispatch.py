@@ -22,9 +22,12 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
+from app.deps import get_current_staff
 from app.services import dispatch as dispatch_service
 
-router = APIRouter()
+# Router-level auth+scope. The trigger endpoints insert MessageDispatch via
+# dispatch_service, which stamps org from the steward/slot (== current_org).
+router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
 class DispatchOut(BaseModel):
@@ -64,8 +67,8 @@ class RadioSlotIn(BaseModel):
 
 
 @router.post("/radio-stations")
-def register_radio_station(station: RadioStationIn, db: Session = Depends(get_db)):
-    row = models.RadioStation(**station.model_dump())
+def register_radio_station(station: RadioStationIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
+    row = models.RadioStation(**station.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -81,10 +84,10 @@ def list_radio_stations(payam: Optional[str] = None, db: Session = Depends(get_d
 
 
 @router.post("/radio-slots")
-def register_radio_slot(slot: RadioSlotIn, db: Session = Depends(get_db)):
+def register_radio_slot(slot: RadioSlotIn, staff: models.StaffAccount = Depends(get_current_staff), db: Session = Depends(get_db)):
     if not db.query(models.RadioStation).filter_by(id=slot.radio_station_id).first():
         raise HTTPException(status_code=404, detail="Radio station not found")
-    row = models.RadioBroadcastSlot(**slot.model_dump())
+    row = models.RadioBroadcastSlot(**slot.model_dump(), organization_id=staff.organization_id)
     db.add(row)
     db.commit()
     db.refresh(row)

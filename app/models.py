@@ -71,6 +71,7 @@ class FinancierType(str, enum.Enum):
 class Cooperative(Base):
     __tablename__ = "cooperative"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     type = Column(Text)  # cooperative | vsla | farmer_group
     payam = Column(Text)
@@ -83,6 +84,7 @@ class Cooperative(Base):
 class LandSteward(Base):
     __tablename__ = "land_steward"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     role = Column(SAEnum(StewardRole), nullable=False)
     full_name = Column(Text, nullable=False)
     phone_number = Column(Text)
@@ -111,6 +113,7 @@ class LandSteward(Base):
 class Parcel(Base):
     __tablename__ = "parcel"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     geom = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
     # area_acres is a DB-generated column (see db/schema.sql —
@@ -172,6 +175,7 @@ class ParcelCropBaseline(Base):
     __table_args__ = (UniqueConstraint("parcel_id", "crop_id"),)
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     # Flattened summary for dashboard/dispatch use: overall_score,
@@ -197,6 +201,7 @@ class ParcelDiagnostic(Base):
     __tablename__ = "parcel_diagnostic"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False, unique=True)
     # Full, unmodified LandDiagnostic response (climate/soil/water/
     # vegetation/topography/land_use/carbon fact lists, external reference
@@ -210,6 +215,7 @@ class ParcelDiagnostic(Base):
 class SeasonPlanting(Base):
     __tablename__ = "season_planting"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     sowing_date = Column(Date)
@@ -230,6 +236,7 @@ class InputRequirement(Base):
     __tablename__ = "input_requirement"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     season_planting_id = Column(UUID(as_uuid=False), ForeignKey("season_planting.id"), nullable=False)
     item_name = Column(Text, nullable=False)
     category = Column(SAEnum(InputCategory), nullable=False)
@@ -269,6 +276,7 @@ class InputFinancingRecord(Base):
     __tablename__ = "input_financing_record"
 
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     input_requirement_id = Column(UUID(as_uuid=False), ForeignKey("input_requirement.id"), nullable=False)
     financier_type = Column(SAEnum(FinancierType), nullable=False)
     financier_name = Column(Text)
@@ -282,6 +290,7 @@ class InputFinancingRecord(Base):
 class AdvisorySnapshot(Base):
     __tablename__ = "advisory_snapshot"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     parcel_id = Column(UUID(as_uuid=False), ForeignKey("parcel.id"), nullable=False)
     source = Column(SAEnum(AdvisorySource), nullable=False)
     soil_n = Column(Numeric)
@@ -300,6 +309,7 @@ class AdvisorySnapshot(Base):
 class PriceBoardEntry(Base):
     __tablename__ = "price_board_entry"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     market_location = Column(Text, nullable=False)
     price_ssp = Column(Numeric)
@@ -311,6 +321,7 @@ class PriceBoardEntry(Base):
 class Buyer(Base):
     __tablename__ = "buyer"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     contact_phone = Column(Text)
     buyer_type = Column(Text)
@@ -320,6 +331,7 @@ class Buyer(Base):
 class BuyerPosting(Base):
     __tablename__ = "buyer_posting"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     buyer_id = Column(UUID(as_uuid=False), ForeignKey("buyer.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     quantity_kg = Column(Numeric)
@@ -336,6 +348,7 @@ class BuyerPosting(Base):
 class AggregationEvent(Base):
     __tablename__ = "aggregation_event"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     cooperative_id = Column(UUID(as_uuid=False), ForeignKey("cooperative.id"), nullable=False)
     crop_id = Column(UUID(as_uuid=False), ForeignKey("crop_dictionary_entry.id"), nullable=False)
     collection_point = Column(Text)
@@ -347,6 +360,7 @@ class AggregationEvent(Base):
 class AggregationContribution(Base):
     __tablename__ = "aggregation_contribution"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     aggregation_event_id = Column(UUID(as_uuid=False), ForeignKey("aggregation_event.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     quantity_kg = Column(Numeric)
@@ -356,6 +370,7 @@ class AggregationContribution(Base):
 class AgroDealer(Base):
     __tablename__ = "agro_dealer"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     location = Column(Text)
     geom = Column(Geometry(geometry_type="POINT", srid=4326))
@@ -366,6 +381,7 @@ class AgroDealer(Base):
 class RadioStation(Base):
     __tablename__ = "radio_station"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     name = Column(Text, nullable=False)
     frequency = Column(Text)
     # Was Column(JSON) ("keeps SQLite-testable") -- but db/schema.sql
@@ -382,6 +398,7 @@ class RadioStation(Base):
 class RadioBroadcastSlot(Base):
     __tablename__ = "radio_broadcast_slot"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     radio_station_id = Column(UUID(as_uuid=False), ForeignKey("radio_station.id"), nullable=False)
     day_of_week = Column(Text)
     time_slot = Column(Text)
@@ -398,6 +415,9 @@ class InboundMessage(Base):
     """
     __tablename__ = "inbound_message"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    # Pre-identity capture table: RLS-exempt, org nullable (see migration 002).
+    # Stamped when the sender's org is known; NULL for an unknown/rejected sender.
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=True)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=True)
     channel = Column(Text, nullable=False, default="telegram")
     external_chat_id = Column(Text, nullable=False)
@@ -441,9 +461,14 @@ class AuthorizedOperator(Base):
     db/schema.sql migration note for the full reasoning.
     """
     __tablename__ = "authorized_operator"
+    # phone_number is unique PER ORGANIZATION, not globally (migration 003):
+    # two orgs may legitimately share an operator phone. telegram_chat_id
+    # stays globally unique (one chat = one person; resolve_chat_org relies on it).
+    __table_args__ = (UniqueConstraint("organization_id", "phone_number"),)
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     full_name = Column(Text, nullable=False)
-    phone_number = Column(Text, nullable=False, unique=True)
+    phone_number = Column(Text, nullable=False)  # unique per-org via __table_args__ (migration 003)
     role = Column(Text)  # 'corwado_staff' | 'digital_champion' -- reporting only, does not gate anything
     telegram_chat_id = Column(Text, unique=True)
     added_by = Column(Text, nullable=False)
@@ -464,6 +489,9 @@ class ParcelDrawToken(Base):
     """
     __tablename__ = "parcel_draw_token"
     token = Column(Text, primary_key=True)
+    # Pre-identity credential: RLS-exempt, org nullable (see migration 002).
+    # Stamped at mint from the resolved steward's org.
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=True)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=False)
     originating_chat_id = Column(Text, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
@@ -485,9 +513,49 @@ class ParcelDrawToken(Base):
     pending_geojson = Column(JSONB(none_as_null=True), nullable=True)
 
 
+class Organization(Base):
+    __tablename__ = "organization"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    name = Column(Text, nullable=False)
+    short_code = Column(Text, unique=True)
+    country = Column(Text)
+    contact_name = Column(Text)
+    contact_phone = Column(Text)
+    # DB default is 'pending' (fail-closed). Product policy for self-signup
+    # lives in code (SELF_SIGNUP_INITIAL_STATUS), not this default.
+    status = Column(Text, nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class StaffAccount(Base):
+    __tablename__ = "staff_account"
+    __table_args__ = (UniqueConstraint("organization_id", "email"),)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
+    email = Column(Text, nullable=False)
+    password_hash = Column(Text, nullable=False)
+    full_name = Column(Text)
+    role = Column(Text, nullable=False, default="admin")  # 'admin' | 'staff' — org-scoped, never landlord
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class PlatformAdmin(Base):
+    """Landlord / cross-org superadmin. Deliberately its own table, never a
+    flag on StaffAccount — the self-signup path has no way to create one."""
+    __tablename__ = "platform_admin"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(Text, nullable=False, unique=True)
+    password_hash = Column(Text, nullable=False)
+    full_name = Column(Text)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
 class MessageDispatch(Base):
     __tablename__ = "message_dispatch"
     id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
     steward_id = Column(UUID(as_uuid=False), ForeignKey("land_steward.id"), nullable=True)
     channel = Column(SAEnum(DispatchChannel), nullable=False)
     # Added Day 10-11 — see db/schema.sql migration note.
