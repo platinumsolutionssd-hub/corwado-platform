@@ -11,7 +11,7 @@ and .env.example for connection settings.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import stewards, parcels, advisory, market, dispatch, seasons, inputs, authorized_operators, telegram, whatsapp
+from app.routers import stewards, parcels, advisory, market, dispatch, seasons, inputs, authorized_operators, telegram
 from app.routers import signup, auth, admin, visitor
 
 app = FastAPI(
@@ -46,10 +46,6 @@ app.include_router(seasons.router, prefix="/api/seasons", tags=["Season Planting
 app.include_router(inputs.router, prefix="/api/inputs", tags=["Bill of Quantities"])
 app.include_router(authorized_operators.router, prefix="/api/authorized-operators", tags=["Authorized Operators"])
 app.include_router(telegram.router, prefix="/api/telegram", tags=["Telegram Webhook"])
-# No prefix: the WhatsApp router declares the full literal paths
-# (/webhook/whatsapp) Meta is configured to call, matching the agreed
-# webhook URL rather than the /api/* convention used above.
-app.include_router(whatsapp.router, tags=["WhatsApp Webhook"])
 
 
 @app.get("/api/health")
