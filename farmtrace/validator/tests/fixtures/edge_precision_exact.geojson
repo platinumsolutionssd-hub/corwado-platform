@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.123497,
+          -0.654248
+        ]
+      },
+      "properties": {
+        "ProducerName": "Quentin Mbeki",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.3
+      }
+    }
+  ]
+}

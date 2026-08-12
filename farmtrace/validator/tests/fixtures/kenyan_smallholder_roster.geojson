@@ -1,0 +1,558 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.900041,
+          -0.449927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wanjiku Kamau",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.08
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.912041,
+          -0.460927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Kamau Achieng",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.15
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.924041,
+          -0.471927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Njeri Kiprop",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.22
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.936041,
+          -0.482927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Mwangi Omondi",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kangema",
+        "Area": 0.29
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.948041,
+          -0.493927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Achieng Auma",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mathira",
+        "Area": 0.36
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.960041,
+          -0.451927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Otieno Gitau",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.43
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.972041,
+          -0.462927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wambui Wangari",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.08
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.903041,
+          -0.473927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Kiprop Ndung'u",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.15
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.915041,
+          -0.484927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Chebet Nyokabi",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kangema",
+        "Area": 0.22
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.927041,
+          -0.495927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Mutua Wanjiku",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mathira",
+        "Area": 0.29
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.939041,
+          -0.453927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Omondi Mwangi",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.36
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.951041,
+          -0.464927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Njoki Wambui",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.43
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.963041,
+          -0.475927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Barasa Mutua",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.08
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.975041,
+          -0.486927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Auma Barasa",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kangema",
+        "Area": 0.15
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.906041,
+          -0.497927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Kariuki Nyambura",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mathira",
+        "Area": 0.22
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.918041,
+          -0.455927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Nyambura Macharia",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.29
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.930041,
+          -0.466927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Gitau Muthoni",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.36
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.942041,
+          -0.477927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Waithera Githinji",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.43
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.954041,
+          -0.488927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Macharia Wanjiru",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kangema",
+        "Area": 0.08
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.966041,
+          -0.499927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wangari Njeri",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mathira",
+        "Area": 0.15
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.978041,
+          -0.457927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Kimani Otieno",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.22
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.909041,
+          -0.468927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Muthoni Chebet",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.29
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.921041,
+          -0.479927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Ndung'u Njoki",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.36
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.933041,
+          -0.490927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wairimu Kariuki",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kangema",
+        "Area": 0.43
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.945041,
+          -0.501927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Githinji Waithera",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mathira",
+        "Area": 0.08
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.957041,
+          -0.459927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Nyokabi Kimani",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.15
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.969041,
+          -0.470927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Maina Wairimu",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.22
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.981041,
+          -0.481927
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wanjiru Maina",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.29
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.050041,
+              -0.499927
+            ],
+            [
+              37.051241,
+              -0.499927
+            ],
+            [
+              37.051241,
+              -0.501127
+            ],
+            [
+              37.050041,
+              -0.501127
+            ],
+            [
+              37.050041,
+              -0.499927
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Wanjiku Cooperative Plot 1",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.060041,
+              -0.509927
+            ],
+            [
+              37.061241,
+              -0.509927
+            ],
+            [
+              37.061241,
+              -0.511127
+            ],
+            [
+              37.060041,
+              -0.511127
+            ],
+            [
+              37.060041,
+              -0.509927
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Otieno Cooperative Plot 2",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.070041,
+              -0.519927
+            ],
+            [
+              37.071241,
+              -0.519927
+            ],
+            [
+              37.071241,
+              -0.521127
+            ],
+            [
+              37.070041,
+              -0.521127
+            ],
+            [
+              37.070041,
+              -0.519927
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Omondi Cooperative Plot 3",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina"
+      }
+    }
+  ]
+}

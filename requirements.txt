@@ -13,3 +13,6 @@ requests==2.34.2
 bcrypt==5.0.0
 PyJWT==2.13.0
 email-validator==2.3.0
+# FarmTrace certification engine (validator/): geodesic plot-area computation.
+# shapely (above) covers geometry validity/intersections; pyproj covers geodesic area.
+pyproj==3.7.2

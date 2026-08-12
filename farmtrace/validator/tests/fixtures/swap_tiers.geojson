@@ -1,0 +1,37 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.419959,
+          36.950073
+        ]
+      },
+      "properties": {
+        "ProducerName": "Rita Nasimiyu",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.2
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          10.000041,
+          50.000073
+        ]
+      },
+      "properties": {
+        "ProducerName": "Samuel Rotich",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.2
+      }
+    }
+  ]
+}
