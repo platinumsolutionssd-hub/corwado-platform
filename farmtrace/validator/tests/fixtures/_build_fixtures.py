@@ -53,7 +53,28 @@ def fc(features):
     return {"type": "FeatureCollection", "features": features}
 
 
+def d6(v, axis):
+    # Give coordinates genuine 6-decimal precision with a non-zero 6th digit.
+    # Round literals like 37.150000 collapse to "37.15" in JSON (under-precise);
+    # real GPS fixes carry ~6 decimals. Deterministic; the sub-metre shift
+    # preserves every area / self-intersection / in-country property asserted below.
+    bump = 0.000041 if axis == 0 else 0.000073
+    return round(v + bump, 6)
+
+
+def _precise(node):
+    """Recursively apply d6 to every [lon, lat] position in a GeoJSON structure."""
+    if isinstance(node, list):
+        if len(node) >= 2 and isinstance(node[0], (int, float)) and isinstance(node[1], (int, float)):
+            return [d6(node[0], 0), d6(node[1], 1)] + list(node[2:])
+        return [_precise(x) for x in node]
+    if isinstance(node, dict):
+        return {k: _precise(v) for k, v in node.items()}
+    return node
+
+
 def write(name, obj):
+    obj = _precise(obj)
     path = os.path.join(HERE, name)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         json.dump(obj, f, indent=2, ensure_ascii=False)
@@ -130,12 +151,13 @@ unclosed_ring = [
     [37.100000, -0.701500],
 ]
 # idx4 bow-tie self-intersection (closed, >=4 points, single ring, no holes)
+# placed well away from idx3's polygon so the two broken plots don't overlap
 bowtie_ring = [
-    [37.100000, -0.700000],
-    [37.101000, -0.701000],
-    [37.101000, -0.700000],
-    [37.100000, -0.701000],
-    [37.100000, -0.700000],
+    [37.300000, -0.900000],
+    [37.301000, -0.901000],
+    [37.301000, -0.900000],
+    [37.300000, -0.901000],
+    [37.300000, -0.900000],
 ]
 broken_seeded = fc([
     # idx0 — property casing: "producername" instead of "ProducerName"
