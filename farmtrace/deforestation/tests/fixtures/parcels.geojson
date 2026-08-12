@@ -1,0 +1,99 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "intact-forest-kakamega",
+        "ProducerName": "Amboka Wekesa",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Kakamega",
+        "Area": 1.77
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [34.864400, 0.349400],
+          [34.865600, 0.349400],
+          [34.865600, 0.350600],
+          [34.864400, 0.350600],
+          [34.864400, 0.349400]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "deforestation-post2020-mau",
+        "ProducerName": "Kiprotich Langat",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mau",
+        "Area": 1.77
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [35.426660, -0.367020],
+          [35.427860, -0.367020],
+          [35.427860, -0.365820],
+          [35.426660, -0.365820],
+          [35.426660, -0.367020]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "savanna-cropland-wau",
+        "ProducerName": "Deng Akol",
+        "ProducerCountry": "SS",
+        "ProductionPlace": "Wau",
+        "Area": 1.77
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [27.989400, 7.699400],
+          [27.990600, 7.699400],
+          [27.990600, 7.700600],
+          [27.989400, 7.700600],
+          [27.989400, 7.699400]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "arid-nonforest-turkana",
+        "ProducerName": "Ekai Lokidor",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Turkana",
+        "Area": 1.77
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [35.899400, 3.499400],
+          [35.900600, 3.499400],
+          [35.900600, 3.500600],
+          [35.899400, 3.500600],
+          [35.899400, 3.499400]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "deforestation-post2020-mau-point",
+        "ProducerName": "Chelangat Rono",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Mau",
+        "Area": 1.0
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [35.481490, -0.563830]
+      }
+    }
+  ]
+}
