@@ -2150,7 +2150,7 @@ export function DrawBoundaryPage({ token }) {
   );
 }
 
-export default function App() {
+export default function App({ onLogout }) {
   const [tab, setTab] = useState('dashboard');
   const [stewards, setStewards] = useState(null);
   const [parcels, setParcels] = useState(null);
@@ -2260,8 +2260,18 @@ export default function App() {
             <div style={{ fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600 }}>CORWADO Digital Extension &amp; Market Linkage</div>
             <div style={{ fontSize: 13, color: '#ffffffaa', marginTop: 2 }}>LAST Project · Western Bahr el Ghazal · connected to live API</div>
           </div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#ffffffcc', background: '#ffffff14', padding: '6px 12px', borderRadius: 20 }}>
-            <Signal size={14} aria-hidden="true" /> {loading ? 'Connecting…' : error ? 'Connection issue' : 'Connected'}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#ffffffcc', background: '#ffffff14', padding: '6px 12px', borderRadius: 20 }}>
+              <Signal size={14} aria-hidden="true" /> {loading ? 'Connecting…' : error ? 'Connection issue' : 'Connected'}
+            </div>
+            {onLogout && (
+              <button onClick={onLogout}
+                      style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, color: '#fff',
+                               background: '#ffffff22', border: '1px solid #ffffff33', padding: '7px 14px',
+                               borderRadius: 20, cursor: 'pointer' }}>
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </header>

@@ -6,13 +6,25 @@
  * is deployed. Defaults to localhost for local development against
  * `uvicorn app.main:app --reload`.
  */
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { BASE_URL } from './config.js';
+import { auth } from './auth.js';
 
 async function request(path, options = {}) {
+  const token = auth.token();
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
   });
+  // Any 401 means the session is gone/invalid: clear the token and let the
+  // auth gate drop back to the login screen (auth.handleUnauthorized).
+  if (res.status === 401) {
+    auth.handleUnauthorized();
+    throw new Error('Your session has ended — please sign in again.');
+  }
   if (!res.ok) {
     const body = await res.text();
     // FastAPI's error shape is {"detail": "..."} -- surface that message
@@ -35,6 +47,7 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request('/api/health'),
+  me: () => request('/api/auth/me'),
 
   // --- Stewards (farmers / cooperative members) -----------------------
   listStewards: (params = {}) => {
