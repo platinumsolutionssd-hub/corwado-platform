@@ -39,12 +39,18 @@ END $$;
 -- corwado_resolver, otherwise `ALTER FUNCTION ... OWNER TO corwado_resolver`
 -- below fails with "must be able to SET ROLE". In PG16+, creating a role
 -- grants the creator ADMIN OPTION but NOT the SET option, so grant ourselves
--- membership WITH SET explicitly (we hold ADMIN from having created it). A
--- superuser would never hit this — the Render-equivalent non-superuser test is
--- exactly what surfaced it.
+-- membership explicitly (we hold ADMIN from having created it).
+-- INHERIT FALSE is LOAD-BEARING: without it the option defaults to the
+-- grantee's rolinherit (TRUE for the owner), and the owner would then INHERIT
+-- corwado_resolver's resolver_read policy + function EXECUTE and be able to
+-- read the identity tables with no tenant context. SET alone is all ALTER
+-- OWNER needs. (The first apply of 004 shipped WITHOUT `INHERIT FALSE` and
+-- leaked; migration 005 corrects environments where that version already ran,
+-- incl. prod. A superuser would never hit any of this — the Render-equivalent
+-- non-superuser harness is what surfaced it.)
 DO $$
 BEGIN
-  EXECUTE format('GRANT corwado_resolver TO %I WITH SET TRUE', current_user);
+  EXECUTE format('GRANT corwado_resolver TO %I WITH SET TRUE, INHERIT FALSE', current_user);
 END $$;
 
 -- USAGE + CREATE on public: CREATE is required because a role can only OWN an

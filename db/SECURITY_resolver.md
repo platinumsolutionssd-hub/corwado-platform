@@ -135,3 +135,24 @@ This is what fixes the write-path break Stage 1 confirmed.
 
 If step 1 fails at `ALTER … OWNER` or the grant (a role-membership limitation),
 fall back to Mechanism B with the cost stated above.
+
+## The owner's membership in corwado_resolver MUST be non-inheriting
+The migration runner needs `SET` membership in `corwado_resolver` to run
+`ALTER FUNCTION … OWNER TO corwado_resolver`. That grant MUST specify
+`INHERIT FALSE`. If `INHERIT` is left to default it follows the grantee's
+`rolinherit` (TRUE for the owner), and the owner then **inherits**
+`corwado_resolver` — picking up its `resolver_read` policy and the functions'
+EXECUTE, so the owner can read `authorized_operator`/`land_steward` with no
+tenant context. That silently re-introduces the exact Mechanism-B cost this
+design rejects (the owner bypassing RLS on the two identity tables), and the
+app is exposed the moment it connects as the owner (as the pre-cutover
+deployment does).
+
+The first apply of 004 shipped without `INHERIT FALSE` and leaked on prod
+(caught by Stage 4's owner-run no-context smoke read, missed by Stage 3 which
+only checked the app roles). Fixed: 004's grant is now `SET TRUE, INHERIT
+FALSE`; migration **005** re-issues the same for environments where the buggy
+004 already ran. `SET` (which `ALTER OWNER` needs) is retained; only `INHERIT`
+is removed, so the owner stays fully RLS-subject except via an explicit
+`SET ROLE`. The standing harness now asserts **owner no-context read = 0 on both
+identity tables** so this can never regress unnoticed.
