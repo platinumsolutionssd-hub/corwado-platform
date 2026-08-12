@@ -66,7 +66,8 @@ except ValueError:
 print("Part 2 — fact assembly via FakeProvider (constructed reductions, no GEE)")
 
 # intact forest: high forest fraction, empty loss history
-r_forest = RawReduction(forest_2020_fraction=0.98, loss_area_by_year={}, treecover2000_mean=88.0)
+r_forest = RawReduction(forest_2020_fraction=0.98, loss_area_by_year={},
+                        forest_loss_area_by_year={}, treecover2000_mean=88.0)
 f = build_facts(feature(fc, "intact-forest-kakamega")["geometry"], 1.77,
                 FakeProvider(r_forest), identifier="intact-forest-kakamega")
 check("intact: forest_2020_fraction carried", f.forest_2020_fraction == 0.98)
@@ -75,22 +76,28 @@ check("intact: forest_2020_area = frac*plot_area",
 check("intact: no loss in any year", f.total_loss_area_ha == 0.0)
 check("intact: footprint_kind polygon", f.footprint_kind == "polygon")
 
-# post-2020 clearing: loss in 2024
-r_loss = RawReduction(forest_2020_fraction=0.9, loss_area_by_year={2024: 1.2}, treecover2000_mean=90.0)
+# post-2020 clearing: all-tree loss in 2024, of which forest-loss is 1.0 ha (rest non-forest)
+r_loss = RawReduction(forest_2020_fraction=0.9, loss_area_by_year={2024: 1.2},
+                      forest_loss_area_by_year={2024: 1.0}, treecover2000_mean=90.0)
 f2 = build_facts(feature(fc, "deforestation-post2020-mau")["geometry"], 1.77,
                  FakeProvider(r_loss), identifier="deforestation-post2020-mau")
-check("clearing: 2024 loss present", f2.loss_area_by_year.get(2024) == 1.2)
-check("clearing: total loss = 1.2 ha", f2.total_loss_area_ha == 1.2)
+check("clearing: 2024 all-loss present", f2.loss_area_by_year.get(2024) == 1.2)
+check("clearing: total all-loss = 1.2 ha", f2.total_loss_area_ha == 1.2)
+check("clearing: forest-loss 2024 = 1.0 ha (< all-loss, non-forest excluded)",
+      f2.forest_loss_area_by_year.get(2024) == 1.0)
+check("clearing: total forest-loss = 1.0 ha", f2.total_forest_loss_area_ha == 1.0)
 
 # non-forest: zero forest, zero loss
-r_bare = RawReduction(forest_2020_fraction=0.0, loss_area_by_year={}, treecover2000_mean=1.0)
+r_bare = RawReduction(forest_2020_fraction=0.0, loss_area_by_year={},
+                      forest_loss_area_by_year={}, treecover2000_mean=1.0)
 f3 = build_facts(feature(fc, "savanna-cropland-wau")["geometry"], 1.77,
                  FakeProvider(r_bare), identifier="savanna-cropland-wau")
 check("savanna: forest fraction 0", f3.forest_2020_fraction == 0.0)
 check("savanna: forest area 0", f3.forest_2020_area_ha == 0.0)
 
 # point plot: build_facts computes a point-buffer footprint and tags it
-r_pt = RawReduction(forest_2020_fraction=0.95, loss_area_by_year={2023: 0.6}, treecover2000_mean=85.0)
+r_pt = RawReduction(forest_2020_fraction=0.95, loss_area_by_year={2023: 0.6},
+                    forest_loss_area_by_year={2023: 0.6}, treecover2000_mean=85.0)
 f4 = build_facts(pt_feat["geometry"], pt_feat["properties"]["Area"],
                  FakeProvider(r_pt), identifier="mau-point")
 check("point-facts: kind point-buffer", f4.footprint_kind == "point-buffer")

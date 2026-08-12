@@ -40,26 +40,39 @@ class GeeProvider(Provider):
         tc_mean = self._hansen.select("treecover2000").reduceRegion(
             ee.Reducer.mean(), geom, HANSEN_SCALE_M, maxPixels=_MAXPIXELS).get("treecover2000")
 
-        # loss area per year: sum pixelArea grouped by lossyear, over loss pixels only.
-        # image bands: [area (0), lossyear (1)] -> group by band 1, sum band 0.
+        # ALL tree-cover loss per year: sum pixelArea grouped by lossyear, loss pixels
+        # only. Image bands [area (0), lossyear (1)] -> group by band 1, sum band 0.
         loss_img = (ee.Image.pixelArea()
                     .addBands(self._lossyear)
                     .updateMask(self._lossyear.gt(0)))
-        grouped = loss_img.reduceRegion(
+        grouped_all = loss_img.reduceRegion(
+            ee.Reducer.sum().group(groupField=1, groupName="year"),
+            geom, HANSEN_SCALE_M, maxPixels=_MAXPIXELS)
+
+        # DEFORESTATION signal: same, but ALSO masked to 2020-baseline forest
+        # (GFC2020 forest==1). Loss of non-forest (e.g. a tree on cropland) is not
+        # EUDR deforestation and is excluded here. Reduced at Hansen's 30 m (the
+        # limiting layer); the 10 m forest mask is resampled to it.
+        forest_loss_img = loss_img.updateMask(self._forest.eq(1))
+        grouped_forest = forest_loss_img.reduceRegion(
             ee.Reducer.sum().group(groupField=1, groupName="year"),
             geom, HANSEN_SCALE_M, maxPixels=_MAXPIXELS)
 
         info = ee.Dictionary({
-            "forest": forest_frac, "tc": tc_mean, "groups": grouped.get("groups"),
+            "forest": forest_frac, "tc": tc_mean,
+            "groups_all": grouped_all.get("groups"),
+            "groups_forest": grouped_forest.get("groups"),
         }).getInfo()
 
-        by_year = {}
-        for g in (info.get("groups") or []):
-            year = 2000 + int(g["year"])
-            by_year[year] = float(g["sum"]) / 1e4  # m^2 -> ha
+        def histogram(groups):
+            out = {}
+            for g in (groups or []):
+                out[2000 + int(g["year"])] = float(g["sum"]) / 1e4  # m^2 -> ha
+            return out
 
         return RawReduction(
             forest_2020_fraction=float(info.get("forest") or 0.0),
-            loss_area_by_year=by_year,
+            loss_area_by_year=histogram(info.get("groups_all")),
+            forest_loss_area_by_year=histogram(info.get("groups_forest")),
             treecover2000_mean=float(info.get("tc") or 0.0),
         )

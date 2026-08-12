@@ -32,17 +32,24 @@ PROVENANCE = {
 @dataclass(frozen=True)
 class DeforestationFacts:
     identifier: Optional[str]
-    footprint_kind: str                       # 'polygon' | 'point-buffer'
+    footprint_kind: str                            # 'polygon' | 'point-buffer'
     plot_area_ha: float
-    forest_2020_fraction: float               # 0..1
+    forest_2020_fraction: float                    # 0..1
     forest_2020_area_ha: float
-    treecover2000_mean: float                 # 0..100
-    loss_area_by_year: Mapping[int, float]    # full histogram, ha (NO cutoff applied)
+    treecover2000_mean: float                      # 0..100
+    loss_area_by_year: Mapping[int, float]         # ALL tree loss, ha — context only
+    forest_loss_area_by_year: Mapping[int, float]  # loss of 2020 forest, ha — EUDR signal
     explainability: dict
 
     @property
     def total_loss_area_ha(self) -> float:
+        """All tree-cover loss (context)."""
         return sum(self.loss_area_by_year.values())
+
+    @property
+    def total_forest_loss_area_ha(self) -> float:
+        """Loss of 2020-baseline forest — the deforestation signal (pre-cutoff)."""
+        return sum(self.forest_loss_area_by_year.values())
 
     def to_dict(self) -> dict:
         return {
@@ -54,6 +61,8 @@ class DeforestationFacts:
             "treecover2000_mean": round(self.treecover2000_mean, 2),
             "loss_area_by_year": {str(y): round(a, 4) for y, a in sorted(self.loss_area_by_year.items())},
             "total_loss_area_ha": round(self.total_loss_area_ha, 4),
+            "forest_loss_area_by_year": {str(y): round(a, 4) for y, a in sorted(self.forest_loss_area_by_year.items())},
+            "total_forest_loss_area_ha": round(self.total_forest_loss_area_ha, 4),
             "explainability": self.explainability,
         }
 
@@ -76,12 +85,16 @@ def build_facts(geometry: dict, area_ha, provider: Provider,
             "plot_area_ha": "geodesic area of the footprint (WGS84 ellipsoid)",
             "forest_2020_fraction": "mean(GFC2020.Map.unmask(0)) over footprint @10 m",
             "forest_2020_area_ha": "forest_2020_fraction * plot_area_ha",
-            "loss_area_by_year": "sum(pixelArea where lossyear==Y) over footprint @30 m, per year",
+            "loss_area_by_year": "sum(pixelArea where lossyear==Y) over footprint @30 m, per year (ALL tree loss)",
+            "forest_loss_area_by_year": "sum(pixelArea where GFC2020 forest==1 AND lossyear==Y) @30 m, per year (deforestation signal)",
             **({"point_footprint_radius_m": "sqrt(Area_ha * 1e4 / pi)"} if kind == "point-buffer" else {}),
         },
         "assumptions": [
             "GFC2020 non-forest is masked and read as 0 via unmask(0).",
             "Hansen lossyear no-loss is masked and read as 0 via unmask(0).",
+            "Deforestation signal = tree loss intersected with 2020-baseline forest "
+            "(GFC2020 forest==1); loss of non-forest is excluded, reduced at 30 m with "
+            "the 10 m forest mask resampled to it.",
             *(["Point footprint is a geodesic circle of the declared Area (see provenance)."]
               if kind == "point-buffer" else []),
         ],
@@ -99,5 +112,6 @@ def build_facts(geometry: dict, area_ha, provider: Provider,
         forest_2020_area_ha=forest_area,
         treecover2000_mean=raw.treecover2000_mean,
         loss_area_by_year=dict(raw.loss_area_by_year),
+        forest_loss_area_by_year=dict(raw.forest_loss_area_by_year),
         explainability=explain,
     )

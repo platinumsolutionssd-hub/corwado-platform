@@ -20,15 +20,21 @@ from typing import Mapping
 
 @dataclass(frozen=True)
 class RawReduction:
-    """Raw per-plot raster reductions over a footprint.
+    """Raw per-plot raster reductions over a footprint. All histograms are the FULL
+    history (no cutoff applied) — REGULATION-AGNOSTIC.
 
-    forest_2020_fraction : mean of GFC2020 'Map'.unmask(0) over the footprint, 0..1.
-    loss_area_by_year    : {calendar_year: hectares}, nonzero years only, from
-                           Hansen 'lossyear' (full history — no cutoff applied).
-    treecover2000_mean   : mean Hansen 'treecover2000' over the footprint, 0..100.
+    forest_2020_fraction    : mean of GFC2020 'Map'.unmask(0) over the footprint, 0..1.
+    loss_area_by_year       : {year: ha} of ALL tree-cover loss (Hansen 'lossyear').
+                              Context only — NOT the deforestation signal.
+    forest_loss_area_by_year: {year: ha} of loss of 2020-BASELINE FOREST, i.e.
+                              pixels where GFC2020 forest==1 AND lossyear==Y. This is
+                              the EUDR-relevant signal (deforestation = loss of
+                              forest); the verdict runs on this, cutoff-filtered.
+    treecover2000_mean      : mean Hansen 'treecover2000' over the footprint, 0..100.
     """
     forest_2020_fraction: float
     loss_area_by_year: Mapping[int, float]
+    forest_loss_area_by_year: Mapping[int, float]
     treecover2000_mean: float
 
 

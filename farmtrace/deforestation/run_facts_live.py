@@ -1,10 +1,10 @@
 """
-Stage 2 LIVE verification — run the deforestation fact layer over the real
-fixtures against live Earth Engine, and print the facts per plot so they can be
-checked against tests/fixtures/README.md's expected determinations.
+LIVE end-to-end verification — run the deforestation pipeline (fact layer + EUDR
+determination) over the real fixtures against live Earth Engine, and print facts +
+verdict per plot for checking against tests/fixtures/README.md.
 
-This is the data-integration counterpart to the offline unit test
-(tests/test_facts.py): the unit test proves the LOGIC, this proves the GEE wiring.
+Counterpart to the offline unit tests (test_facts.py proves fact assembly,
+test_ruleset.py proves the determination logic); this proves the GEE wiring.
 
 RUN (cwd = repo root):
     $env:GEE_PROJECT="your-project-id"; python farmtrace/deforestation/run_facts_live.py
@@ -18,16 +18,17 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from farmtrace.deforestation.core.facts import build_facts
+from farmtrace.deforestation.core.ruleset import determine
+from farmtrace.deforestation.rulesets.eudr import eudr_deforestation_ruleset
 
 FIX = os.path.join(os.path.dirname(__file__), "tests", "fixtures", "parcels.geojson")
 
-# Expected determination per plot (from the fixtures README) — for eyeball checking.
 EXPECT = {
-    "intact-forest-kakamega": "forest baseline, NO post-2020 loss",
-    "deforestation-post2020-mau": "forest baseline, POST-2020 loss present (the case)",
-    "savanna-cropland-wau": "NOT forest baseline, no loss",
-    "arid-nonforest-turkana": "NOT forest baseline, no loss",
-    "deforestation-post2020-mau-point": "point plot, POST-2020 loss present",
+    "intact-forest-kakamega": "compliant (forest, no post-2020 loss)",
+    "deforestation-post2020-mau": "NON-compliant (post-2020 forest loss) — the case",
+    "savanna-cropland-wau": "compliant (not forest, no loss)",
+    "arid-nonforest-turkana": "compliant (not forest, no loss)",
+    "deforestation-post2020-mau-point": "NON-compliant (point plot, post-2020 loss)",
 }
 
 
@@ -38,28 +39,31 @@ def main() -> int:
         return 2
     from farmtrace.deforestation.core.provider_gee import GeeProvider  # imports ee
     provider = GeeProvider(project=project)
-    print(f"Earth Engine initialised on project: {project}\n")
+    ruleset = eudr_deforestation_ruleset()
+    print(f"Earth Engine initialised on project: {project}   |   ruleset: {ruleset.name}\n")
 
     fc = json.load(open(FIX))
     for feat in fc["features"]:
         p = feat["properties"]
         pid = p["plot_id"]
         facts = build_facts(feat["geometry"], p.get("Area"), provider, identifier=pid)
-        loss = {y: round(a, 4) for y, a in sorted(facts.loss_area_by_year.items())}
-        post2020 = {y: a for y, a in loss.items() if y >= 2021}
+        res = determine(facts, ruleset)
+
+        all_loss = {y: round(a, 4) for y, a in sorted(facts.loss_area_by_year.items()) if y >= 2021}
+        forest_loss = {y: round(a, 4) for y, a in sorted(facts.forest_loss_area_by_year.items()) if y >= 2021}
+        flag = "NON-COMPLIANT" if not res.compliant else "compliant"
         print(f"● {pid}   [{facts.footprint_kind}]  {p.get('ProducerName')} / {p.get('ProducerCountry')}")
-        print(f"    plot_area_ha         : {facts.plot_area_ha:.4f}")
-        print(f"    forest_2020_fraction : {facts.forest_2020_fraction:.4f}  "
-              f"(forest_2020_area_ha {facts.forest_2020_area_ha:.4f})")
-        print(f"    treecover2000_mean   : {facts.treecover2000_mean:.2f}")
-        print(f"    loss_area_by_year    : {loss if loss else '{}'}")
-        print(f"    post-2020 loss (>=21): {post2020 if post2020 else 'none'}")
-        print(f"    EXPECT               : {EXPECT.get(pid, '?')}")
+        print(f"    forest_2020_fraction     : {facts.forest_2020_fraction:.4f}   was_forest_2020={res.was_forest_2020}")
+        print(f"    post-2020 ALL tree loss  : {all_loss if all_loss else 'none'}")
+        print(f"    post-2020 FOREST loss    : {forest_loss if forest_loss else 'none'}   (verdict runs on this)")
+        print(f"    -> {res.determination.value}  [{flag}]")
+        print(f"       {res.rationale}")
+        print(f"       EXPECT: {EXPECT.get(pid, '?')}")
         print()
 
-    print("Check each plot's facts against tests/fixtures/README.md. Two things to")
-    print("confirm: (1) forest_2020_fraction is high for Kakamega/Mau, ~0 for")
-    print("Wau/Turkana; (2) post-2020 loss is present ONLY for the two Mau plots.")
+    print("Confirm: Kakamega/Wau/Turkana compliant; both Mau plots NON-compliant.")
+    print("Watch the ALL-tree-loss vs FOREST-loss columns — where they differ, the")
+    print("verdict correctly uses forest-loss (non-forest tree loss excluded).")
     return 0
 
 
