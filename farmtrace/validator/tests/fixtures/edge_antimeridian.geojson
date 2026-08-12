@@ -1,0 +1,40 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              179.9,
+              -16.7
+            ],
+            [
+              -179.9,
+              -16.7
+            ],
+            [
+              -179.9,
+              -16.9
+            ],
+            [
+              179.9,
+              -16.9
+            ],
+            [
+              179.9,
+              -16.7
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Pacific Grower",
+        "ProducerCountry": "FJ",
+        "ProductionPlace": "Vanua Levu"
+      }
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.95,
+          -0.42
+        ]
+      },
+      "properties": {
+        "ProducerName": "Daniel Mwangi",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.25
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.01,
+          -0.56
+        ]
+      },
+      "properties": {
+        "ProducerName": "Esther Achieng",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Karatina",
+        "Area": 0.4
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.08,
+          -0.64
+        ]
+      },
+      "properties": {
+        "ProducerName": "Francis Otieno",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.15
+      }
+    }
+  ]
+}

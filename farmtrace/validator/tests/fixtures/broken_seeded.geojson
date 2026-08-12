@@ -1,0 +1,172 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.15,
+          -0.72
+        ]
+      },
+      "properties": {
+        "producername": "Grace Wambui",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.5
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.01,
+          -0.56
+        ]
+      },
+      "properties": {
+        "ProducerName": "Henry Kiprop",
+        "ProducerCountry": "KEN",
+        "ProductionPlace": "Karatina",
+        "Area": 0.3
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          36.95,
+          -0.42
+        ]
+      },
+      "properties": {
+        "ProducerName": "Irene Chebet",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": "1.1"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.1,
+              -0.7
+            ],
+            [
+              37.1015,
+              -0.7
+            ],
+            [
+              37.1015,
+              -0.7015
+            ],
+            [
+              37.1,
+              -0.7015
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "James Mutua",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.1,
+              -0.7
+            ],
+            [
+              37.101,
+              -0.701
+            ],
+            [
+              37.101,
+              -0.7
+            ],
+            [
+              37.1,
+              -0.701
+            ],
+            [
+              37.1,
+              -0.7
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Kevin Omondi",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            37.1,
+            -0.7
+          ],
+          [
+            37.101,
+            -0.701
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Lucy Njoki",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          210.5,
+          -0.7
+        ]
+      },
+      "properties": {
+        "ProducerName": "Moses Barasa",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.2
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -0.42,
+          36.95
+        ]
+      },
+      "properties": {
+        "ProducerName": "Nancy Auma",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri",
+        "Area": 0.2
+      }
+    }
+  ]
+}

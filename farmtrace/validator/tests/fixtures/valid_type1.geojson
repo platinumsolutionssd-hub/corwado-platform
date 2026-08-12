@@ -1,0 +1,78 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          37.15,
+          -0.72
+        ]
+      },
+      "properties": {
+        "ProducerName": "Alice Wanjiku",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.8
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              37.1,
+              -0.7
+            ],
+            [
+              37.1021,
+              -0.7
+            ],
+            [
+              37.1021,
+              -0.7021
+            ],
+            [
+              37.1,
+              -0.7021
+            ],
+            [
+              37.1,
+              -0.7
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Boniface Kamau",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Nyeri"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "MultiPoint",
+        "coordinates": [
+          [
+            37.155,
+            -0.725
+          ],
+          [
+            37.156,
+            -0.726
+          ]
+        ]
+      },
+      "properties": {
+        "ProducerName": "Catherine Njeri",
+        "ProducerCountry": "KE",
+        "ProductionPlace": "Murang'a",
+        "Area": 0.3
+      }
+    }
+  ]
+}
