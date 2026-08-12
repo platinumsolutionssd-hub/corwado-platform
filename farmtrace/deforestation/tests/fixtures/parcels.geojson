@@ -94,6 +94,26 @@
         "type": "Point",
         "coordinates": [35.481490, -0.563830]
       }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "plot_id": "nonforest-treeloss-wau",
+        "ProducerName": "Nyandeng Ariath",
+        "ProducerCountry": "SS",
+        "ProductionPlace": "Wau",
+        "Area": 1.77
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [27.969870, 7.478420],
+          [27.971070, 7.478420],
+          [27.971070, 7.479620],
+          [27.969870, 7.479620],
+          [27.969870, 7.478420]
+        ]]
+      }
     }
   ]
 }

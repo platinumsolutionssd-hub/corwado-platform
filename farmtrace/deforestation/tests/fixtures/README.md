@@ -24,6 +24,7 @@ Verified encodings (Stage 0 grounding record, `probe_datasets.py`):
 | `savanna-cropland-wau` | 27.9900, 7.7000 | tc2000=1, `Map`=None(0), lossyear=0 | probe | never-forest cropland/savanna | **not forest at baseline, no loss → compliant.** The common legitimate smallholder case (CORWADO theatre). |
 | `arid-nonforest-turkana` | 35.9000, 3.5000 | tc2000=0, `Map`=None(0), lossyear=0 | probe | arid non-forest | **not forest at baseline, no loss → compliant.** |
 | `deforestation-post2020-mau-point` | 35.4815, −0.5638 | `Map`=1 AND lossyear=23 (2023), by finder construction | finder | post-2020 clearing, **as a Point+Area** | **non-compliant**, and exercises the point→buffer(`Area`)→reduce path. |
+| `nonforest-treeloss-wau` | 27.9705, 7.4790 | `Map`=0 (non-forest) AND lossyear=23 (2023), tc=28, by finder construction | finder (`find_nonforest_loss.py`) | **divergence**: non-forest 2020 with post-2020 tree loss (CORWADO theatre) | **COMPLIANT** — all-tree-loss > 0 but forest-loss ≈ 0, so no deforestation of 2020-baseline forest. Proves the Stage-2 intersection stops a cropland tree-removal being mislabelled as EUDR deforestation. |
 
 ## Two caveats, resolved when the core runs live (Stage 2)
 

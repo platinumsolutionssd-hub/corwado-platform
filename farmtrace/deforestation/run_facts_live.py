@@ -29,6 +29,7 @@ EXPECT = {
     "savanna-cropland-wau": "compliant (not forest, no loss)",
     "arid-nonforest-turkana": "compliant (not forest, no loss)",
     "deforestation-post2020-mau-point": "NON-compliant (point plot, post-2020 loss)",
+    "nonforest-treeloss-wau": "COMPLIANT — divergence proof: non-forest 2020 + post-2020 tree loss; ALL-loss>0 but FOREST-loss~0",
 }
 
 
