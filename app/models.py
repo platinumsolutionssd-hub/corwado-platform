@@ -8,7 +8,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Column, String, Boolean, Numeric, DateTime, ForeignKey, Text, Date,
-    Enum as SAEnum, UniqueConstraint, FetchedValue,
+    BigInteger, Enum as SAEnum, UniqueConstraint, FetchedValue,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
@@ -535,7 +535,11 @@ class StaffAccount(Base):
     email = Column(Text, nullable=False)
     password_hash = Column(Text, nullable=False)
     full_name = Column(Text)
-    role = Column(Text, nullable=False, default="admin")  # 'admin' | 'staff' — org-scoped, never landlord
+    # 'admin' (org-admin: approves consultant grants, manages operators) | 'staff'.
+    # DEFAULT is 'staff' (fail-safe): the founding staff is set to 'admin' EXPLICITLY
+    # in services/organizations.py; any future non-founding staff-creation path that
+    # forgets to set role therefore mints a non-admin, never a silent admin.
+    role = Column(Text, nullable=False, default="staff")
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -566,3 +570,49 @@ class MessageDispatch(Base):
     sent_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     delivery_status = Column(Text, default="pending")
     delivery_note = Column(Text, nullable=True)
+
+
+# ---- Phase 1 identity: consultant access + landlord audit (see migration 006) ----
+
+class ConsultantAccount(Base):
+    """External advisor identity. Org-INDEPENDENT — no organization_id. Access to
+    any org is granted per-org via ConsultantGrant, never baked into this row or the
+    JWT. Control-plane table: no tenant RLS (like StaffAccount / PlatformAdmin)."""
+    __tablename__ = "consultant_account"
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    email = Column(Text, nullable=False, unique=True)
+    password_hash = Column(Text, nullable=False)
+    full_name = Column(Text)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class ConsultantGrant(Base):
+    """A consultant's revocable access to ONE org. status: requested -> active
+    (an org-admin approves) -> revoked. Checked on EVERY consultant request, so a
+    revocation takes effect on the next request, not at next login."""
+    __tablename__ = "consultant_grant"
+    __table_args__ = (UniqueConstraint("consultant_id", "organization_id"),)
+    id = Column(UUID(as_uuid=False), primary_key=True, default=gen_uuid)
+    consultant_id = Column(UUID(as_uuid=False), ForeignKey("consultant_account.id"), nullable=False)
+    organization_id = Column(UUID(as_uuid=False), ForeignKey("organization.id"), nullable=False)
+    status = Column(Text, nullable=False, default="requested")  # requested | active | revoked
+    requested_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    approved_at = Column(DateTime(timezone=True))
+    approved_by = Column(UUID(as_uuid=False), ForeignKey("staff_account.id"))  # must be an org-admin
+    revoked_at = Column(DateTime(timezone=True))
+    review_due = Column(Date)  # persist-until-revoked + logged review date
+
+
+class LandlordAuditLog(Base):
+    """Append-only audit of landlord-context writes. Rows are written by the DB
+    trigger log_landlord_write (never by the app) — this model is READ-ONLY, used
+    by the landlord to view the trail."""
+    __tablename__ = "landlord_audit_log"
+    id = Column(BigInteger, primary_key=True)
+    platform_admin_id = Column(UUID(as_uuid=False))
+    action = Column(Text, nullable=False)          # INSERT | UPDATE | DELETE
+    table_name = Column(Text, nullable=False)
+    row_id = Column(Text)
+    occurred_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    row_data = Column(JSONB)

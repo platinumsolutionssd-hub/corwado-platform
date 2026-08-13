@@ -120,6 +120,13 @@ assert "landlord write created an audit row (what+action)" "1" \
   "$(qa "SELECT count(*) FROM landlord_audit_log WHERE table_name='cooperative' AND action='INSERT' AND row_data->>'name'='Landlord Coop';")"
 assert "landlord audit captured the admin id (who)" "$LADMIN" \
   "$(qa "SELECT platform_admin_id::text FROM landlord_audit_log WHERE row_data->>'name'='Landlord Coop' ORDER BY id DESC LIMIT 1;")"
+# org-admin activation: a staff row created WITHOUT a role now defaults to 'staff'
+# (fail-safe), not 'admin' — so no future path silently mints an org-admin.
+# head -1: INSERT ... RETURNING prints the value line AND psql's "INSERT 0 1" tag;
+# take just the returned role.
+assert "staff role DEFAULT is fail-safe 'staff'" "staff" \
+  "$(qa "INSERT INTO staff_account (organization_id,email,password_hash,full_name) VALUES ('$CORG','defaultrole@test','h','Default Role') RETURNING role;" | head -1)"
+
 # staff-context write is NOT audited
 AUDIT_BEFORE=$(qa "SELECT count(*) FROM landlord_audit_log;")
 echo -n "  staff insert -> "; $P $CA -tAc "BEGIN; SELECT set_config('app.current_org','$CORG',true); INSERT INTO cooperative (organization_id,name,type) VALUES ('$CORG','Staff Coop','cooperative'); COMMIT;" 2>&1 | tail -1

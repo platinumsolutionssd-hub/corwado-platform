@@ -17,9 +17,11 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app import models
-from app.deps import get_current_staff
+from app.deps import get_current_staff, require_org_admin
 from app.services.steward_registration import normalize_phone
 
+# Router-level get_current_staff => any authenticated staff for reads; the two
+# management endpoints (add / revoke) additionally require an org-admin.
 router = APIRouter(dependencies=[Depends(get_current_staff)])
 
 
@@ -46,7 +48,7 @@ class AuthorizedOperatorOut(BaseModel):
 
 @router.post("", response_model=AuthorizedOperatorOut)
 def add_authorized_operator(operator: AuthorizedOperatorIn,
-                            staff: models.StaffAccount = Depends(get_current_staff),
+                            staff: models.StaffAccount = Depends(require_org_admin),
                             db: Session = Depends(get_db)):
     phone = normalize_phone(operator.phone_number)
     existing = db.query(models.AuthorizedOperator).filter_by(phone_number=phone).first()
@@ -77,7 +79,9 @@ def list_authorized_operators(active_only: bool = False, db: Session = Depends(g
 
 
 @router.patch("/{operator_id}/revoke", response_model=AuthorizedOperatorOut)
-def revoke_authorized_operator(operator_id: str, db: Session = Depends(get_db)):
+def revoke_authorized_operator(operator_id: str,
+                               admin: models.StaffAccount = Depends(require_org_admin),
+                               db: Session = Depends(get_db)):
     """
     Turns off is_active without deleting the row — access removal stays
     an auditable fact ("X was authorized, then revoked"), same reasoning

@@ -24,11 +24,18 @@
 --      tables that logs any write performed under app.platform_admin='on'. Makes
 --      the landlord's procedural write-restraint verifiable, not merely asserted.
 --
--- org-admin: NO schema change — the existing staff_account.role='admin' (dormant
--- since 001) becomes the org-admin. Enforcement (who may approve consultant grants
--- / manage operators) is app-layer; this migration only relies on the column.
+-- org-admin: the existing staff_account.role='admin' (dormant since 001) becomes
+-- the org-admin. Enforcement (who may approve consultant grants / manage operators)
+-- is app-layer. The one schema touch is flipping the column DEFAULT from 'admin' to
+-- 'staff' (fail-safe): the founding staff is set to 'admin' EXPLICITLY in code
+-- (services/organizations.py), so a future non-founding staff-creation path that
+-- forgets to set role mints a non-admin, never a silent admin. Existing rows are
+-- unchanged (all are founding admins).
 -- ============================================================
 BEGIN;
+
+-- ---------- org-admin: fail-safe role default (see header) ----------
+ALTER TABLE staff_account ALTER COLUMN role SET DEFAULT 'staff';
 
 -- ---------- A. consultant identity + grants (control plane, no tenant RLS) ----------
 CREATE TABLE IF NOT EXISTS consultant_account (

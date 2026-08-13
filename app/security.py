@@ -37,8 +37,10 @@ def verify_password(raw: str, hashed: str) -> bool:
 
 
 def issue_token(subject: str, typ: str) -> str:
-    # typ is 'staff' or 'platform_admin'. A token minted for one role can
-    # never satisfy the other dependency's typ check (see app/deps.py).
+    # typ is 'staff', 'platform_admin', or 'consultant'. A token minted for one
+    # role can never satisfy another dependency's typ check (see app/deps.py).
+    # A consultant token carries ONLY the consultant id (sub) — never an org; the
+    # org is chosen per-request and the grant re-checked every time.
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {"sub": subject, "typ": typ, "iat": now, "exp": now + timedelta(hours=JWT_TTL_HOURS)},

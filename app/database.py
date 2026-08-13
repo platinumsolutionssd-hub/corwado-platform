@@ -22,25 +22,45 @@ Base = declarative_base()
 
 def _apply_tenant_context(session, connection):
     """
-    The single place that decides which RLS GUC a transaction carries.
-    Three mutually exclusive outcomes:
-      - platform_admin -> sets ONLY app.platform_admin='on'  (landlord bypass)
-      - org_id         -> sets ONLY app.current_org=<uuid>   (tenant scope)
+    The single place that decides which RLS context a transaction carries.
+    Mutually exclusive outcomes:
+      - platform_admin -> app.platform_admin='on' (+ app.platform_admin_id for the
+                          landlord-audit trigger's who-field)      (landlord bypass)
+      - consultant     -> app.current_org=<uuid> AND SET LOCAL ROLE corwado_consultant
+                          (read-only, BoQ/PII-denied), scoped to that one org
+      - org_id (staff) -> ONLY app.current_org=<uuid>              (tenant scope)
       - neither        -> sets NOTHING -> RLS denies every tenant row (fail-closed)
-    A staff context can never reach the platform_admin branch: the two are set
-    by two different dependencies (deps.py) writing different keys.
-    Settings are LOCAL (txn-scoped), so nothing leaks onto the pooled connection.
+    The four are set by four different dependencies writing different keys; a staff
+    context can never reach the platform_admin branch, etc.
+
+    Every setting is TRANSACTION-LOCAL: `set_config(..., true)` and `SET LOCAL ROLE`
+    both reset at transaction end. So a pooled connection can NEVER carry the
+    consultant role (or any GUC) into the next request — the next request's
+    after_begin re-derives the context from scratch, or sets nothing (deny-closed).
     """
     ctx = session.info.get("tenant")
     if not ctx:
         return  # deny-closed: an unauthenticated / stray session sees zero rows
     if ctx.get("platform_admin"):
         connection.execute(text("SELECT set_config('app.platform_admin', 'on', true)"))
+        admin_id = ctx.get("platform_admin_id")
+        if admin_id:
+            connection.execute(
+                text("SELECT set_config('app.platform_admin_id', :a, true)"),
+                {"a": str(admin_id)},
+            )
     elif ctx.get("org_id"):
         connection.execute(
             text("SELECT set_config('app.current_org', :o, true)"),
             {"o": str(ctx["org_id"])},
         )
+        if ctx.get("consultant"):
+            # SET LOCAL ROLE is transaction-scoped: it reverts to corwado_app at
+            # txn end, so the read-only consultant role cannot outlive this request
+            # on the pooled connection. RLS (app.current_org above) still confines
+            # every read to the granted org; the role additionally strips write and
+            # BoQ/PII access. Role name is a fixed literal (no injection surface).
+            connection.execute(text("SET LOCAL ROLE corwado_consultant"))
 
 
 @event.listens_for(SessionLocal, "after_begin")
